@@ -21,68 +21,62 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.js"
     integrity="sha512-tE1z+95+lMCGwy+9PnKgUSIeHhvioC9lMlI7rLWU0Ps3XTdjRygLcy4mLuL0JAoK4TLdQEyP0yOl/9dMOqpH/Q=="
     crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <title>Lidatube</title>
+  <title>LidaClips</title>
 </head>
 
-<body class="bg-dark-subtle">
-  <!-- Top Bar -->
+<body class="app-shell">
   <div class="sticky-top">
-    <div class="container-fluid bg-dark">
+    <div class="top-strip">
       <div class="top-bar d-flex justify-content-between align-items-center">
-        <h1 class="title text-center text-light flex-grow-1 my-1 ps-2 ms-5" id="return-to-top">LidaTube</h1>
-        <button class="btn btn-link text-light" id="settings-button" data-bs-toggle="modal"
+        <div class="brand-lockup">
+          <img src="{{url_for('static', filename='logo.png')}}" alt="Logo" class="brand-logo">
+          <h1 class="title my-1" id="return-to-top">LidaClips</h1>
+        </div>
+        <button class="icon-button" id="settings-button" data-bs-toggle="modal"
           data-bs-target="#config-modal">
-          <i class="fa fa-gear fa-2x"></i>
+          <i class="fa fa-gear"></i>
         </button>
       </div>
     </div>
   </div>
 
-  <!-- Cards -->
-  <div class="container-fluid mt-2 card-container">
-    <div class="row cards-row">
+  <div class="container-fluid mt-3 card-container">
+    <div class="row cards-row g-3">
       <div class="col-md-6 col-12 mb-3">
-        <div class="card bg-secondary-subtle h-100" id="lidarr-card">
+        <div class="card tool-card h-100" id="targets-card">
           <div class="card-body d-flex flex-column">
             <div class="row">
               <div class="col-auto">
                 <img src="{{url_for('static', filename='lidarr.svg')}}" alt="Logo" class="logo">
               </div>
               <div class="col-auto d-flex align-items-center justify-content-start p-0">
-                <h2 class="panel-title mb-0">Lidarr</h2>
+                <h2 class="panel-title mb-0">Library Targets</h2>
               </div>
             </div>
             <div class="btn-group mt-1">
-              <button class="btn btn-primary w-100" id="get-lidarr-wanted-btn">
-                <span class="spinner-border spinner-border-sm d-none" id="lidarr-spinner" role="status"
+              <button class="btn btn-primary w-100" id="refresh-targets-btn">
+                <span class="spinner-border spinner-border-sm d-none" id="targets-spinner" role="status"
                   aria-hidden="true"></span>
                 Refresh
               </button>
-              <button class="btn btn-warning w-100" id="stop-lidarr-btn">Stop</button>
-              <button class="btn btn-danger w-100" id="reset-lidarr-btn">Reset</button>
             </div>
             <div class="container non-scrollable my-1 p-0" id="select-all">
-              <div id="lidarr-progress-status-bar" class="progress">
+              <div id="targets-progress-status-bar" class="progress">
                 <div class="progress-bar-striped bg-success" role="progressbar" aria-valuenow="100" aria-valuemin="0"
                   aria-valuemax="100"></div>
               </div>
             </div>
             <div class="container scrollable p-0">
               <div class="table">
-                <table class="table table-striped" id="lidarr-table">
+                <table class="table table-striped" id="targets-table">
                   <thead class="thead-sticky">
                     <tr>
-                      <th>
-                        <div class="form-check">
-                          <input class="form-check-input" type="checkbox" id="select-all-checkbox">
-                        </div>
-                      </th>
-                      <th>Album Name</th>
-                      <th class="text-center">Wanted</th>
+                      <th>Track</th>
+                      <th>Album</th>
+                      <th class="text-center">Duration</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <!-- Data will be populated dynamically using JavaScript -->
                   </tbody>
                 </table>
               </div>
@@ -91,41 +85,44 @@
         </div>
       </div>
       <div class="col-md-6 col-12 mb-3">
-        <div class="card bg-secondary-subtle h-100" id="ytdlp-card">
+        <div class="card tool-card h-100" id="sync-card">
           <div class="card-body d-flex flex-column">
             <div class="row">
               <div class="col-auto">
                 <img src="{{url_for('static', filename='yt_dlp.png')}}" alt="Logo" class="logo">
               </div>
               <div class="col-auto d-flex align-items-center justify-content-start p-0">
-                <h2 class="panel-title mb-0">yt_dlp</h2>
+                <h2 class="panel-title mb-0">Clip Sync</h2>
               </div>
             </div>
             <div class="btn-group mt-1">
-              <button class="btn btn-primary w-100 " id="start-ytdlp-btn">
-                <span class="spinner-border spinner-border-sm d-none" id="ytdlp-spinner" role="status"
+              <button class="btn btn-primary w-100 " id="start-sync-btn">
+                <span class="spinner-border spinner-border-sm d-none" id="sync-spinner" role="status"
                   aria-hidden="true"></span>
-                Download</button>
-              <button class="btn btn-warning w-100 " id="stop-ytdlp-btn">Stop</button>
-              <button class="btn btn-danger w-100 " id="reset-ytdlp-btn">Reset</button>
+                Sync</button>
             </div>
             <div class="container non-scrollable my-1 p-0" id="progress-bar">
-              <div id="ytdlp-progress-status-bar" class="progress">
+              <div id="sync-progress-status-bar" class="progress">
                 <div class="progress-bar-striped bg-success" role="progressbar" aria-valuenow="100" aria-valuemin="0"
                   aria-valuemax="100"></div>
               </div>
             </div>
+            <div class="summary-grid my-2" id="summary-grid">
+              <div><span>Targets</span><strong id="summary-targets">0</strong></div>
+              <div><span>Downloaded</span><strong id="summary-downloaded">0</strong></div>
+              <div><span>No Match</span><strong id="summary-no-match">0</strong></div>
+              <div><span>Errors</span><strong id="summary-errors">0</strong></div>
+            </div>
             <div class="container scrollable p-0">
               <div class="table">
-                <table class="table table-striped" id="ytdlp-table">
+                <table class="table table-striped" id="clips-table">
                   <thead class="thead-sticky">
                     <tr>
-                      <th>Search Item</th>
-                      <th class="text-center">Status</th>
+                      <th>Metric</th>
+                      <th class="text-center">Value</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <!-- Data will be populated dynamically using JavaScript -->
                   </tbody>
                 </table>
               </div>
@@ -136,7 +133,6 @@
     </div>
   </div>
 
-  <!-- Modal -->
   <div class="modal fade" id="config-modal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel"
     aria-hidden="true">
     <div class="modal-dialog" role="document">
@@ -147,34 +143,29 @@
 
         </div>
         <div class="modal-body">
-          <div id="save-message" style="display: none;" class="alert alert-success mt-3">
-            Settings saved successfully.
-          </div>
           <div class="form-group-modal">
             <label for="lidarr-address">Lidarr Address:</label>
-            <input type="text" class="form-control" id="lidarr-address" placeholder="Enter Lidarr Address">
+            <input type="text" class="form-control" id="lidarr-address" readonly>
           </div>
           <div class="form-group-modal my-3">
-            <label for="lidarr-api-key">Lidarr API Key:</label>
-            <input type="text" class="form-control" id="lidarr-api-key" placeholder="Enter Lidarr API Key">
+            <label for="navidrome-address">Navidrome Address:</label>
+            <input type="text" class="form-control" id="navidrome-address" readonly>
           </div>
           <div class="form-group-modal my-3">
-            <label for="sleep-interval">Sleep Interval (Seconds):</label>
-            <input type="number" class="form-control" id="sleep-interval" min="0" placeholder="Enter Sleep Interval">
+            <label for="clip-output-mode">Output Mode:</label>
+            <input type="text" class="form-control" id="clip-output-mode" readonly>
           </div>
           <div class="form-group-modal my-3">
-            <label for="sync-schedule">Sync Schedule:</label>
-            <input type="text" class="form-control" id="sync-schedule"
-              placeholder="Enter Hour in 24hr format (use , for multiple hours)">
+            <label for="clip-output-path">Output Path:</label>
+            <input type="text" class="form-control" id="clip-output-path" readonly>
           </div>
           <div class="form-group-modal">
-            <label for="minimum-match-ratio">Minimum Match Ratio (%):</label>
-            <input type="text" class="form-control" id="minimum-match-ratio" placeholder="Minimum Match Ratio(%)">
+            <label for="sync-schedule">Sync Schedule:</label>
+            <input type="text" class="form-control" id="sync-schedule" readonly>
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-          <button type="button" id="save-changes-btn" class="btn btn-primary">Save changes</button>
           <i class="fa fa-sun"></i>
           <div class="form-check form-switch">
             <input class="form-check-input rounded" type="checkbox" id="theme-switch">

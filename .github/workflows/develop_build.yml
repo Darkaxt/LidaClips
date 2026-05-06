@@ -1,4 +1,4 @@
-name: develop-ci
+name: lidaclips-develop-ci
 
 permissions:
   contents: write

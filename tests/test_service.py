@@ -1,0 +1,166 @@
+import os
+import tempfile
+import unittest
+
+from lidaclips.index import ClipIndex
+from lidaclips.models import ClipTarget
+from lidaclips.scoring import Candidate, ClipScorer
+from lidaclips.service import LidaClipsService
+
+
+class FakeLidarr:
+    def __init__(self, targets):
+        self.targets = targets
+
+    def collect_pending_tracks(self, index):
+        for target in self.targets:
+            index.upsert_track(target, navidrome_song_id="nav-song-42")
+        return [target for target in self.targets if not index.has_completed_clip(target.lidarr_track_id)]
+
+
+class FakeSearch:
+    def __init__(self, candidates):
+        self.candidates = candidates
+
+    def search(self, target):
+        return self.candidates
+
+
+class FakeDownloader:
+    def __init__(self, file_path):
+        self.file_path = file_path
+        self.downloads = []
+
+    def download(self, target, candidate):
+        self.downloads.append((target, candidate))
+        with open(self.file_path, "wb") as handle:
+            handle.write(b"video")
+        return {"file_path": self.file_path, "mime_type": "video/mp4"}
+
+
+class FakeDecision:
+    def __init__(self, accepted, score):
+        self.accepted = accepted
+        self.score = score
+
+    def to_evidence(self):
+        return {"accepted": self.accepted, "score": self.score}
+
+
+class FakeScorer:
+    def score(self, artist, title, expected_duration, candidate):
+        if candidate.video_id == "rejected-high":
+            return FakeDecision(False, 99)
+        return FakeDecision(True, 80)
+
+
+class ServiceTests(unittest.TestCase):
+    def make_target(self):
+        return ClipTarget(
+            lidarr_track_id=42,
+            artist_id=1,
+            album_id=10,
+            artist="The Example Band",
+            album="Neon Nights",
+            album_year=2020,
+            title="Bright Lights",
+            track_number="1",
+            absolute_track_number=1,
+            duration=240,
+            source_file_path="/music/song.flac",
+        )
+
+    def test_sync_once_records_downloaded_official_clip(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index = ClipIndex(":memory:")
+            clip_path = os.path.join(temp_dir, "clip.mp4")
+            downloader = FakeDownloader(clip_path)
+            service = LidaClipsService(
+                index=index,
+                lidarr_client=FakeLidarr([self.make_target()]),
+                candidate_search=FakeSearch(
+                    [
+                        Candidate(
+                            video_id="abc123",
+                            title="The Example Band - Bright Lights (Official Music Video)",
+                            webpage_url="https://www.youtube.com/watch?v=abc123",
+                            channel="The Example Band",
+                            uploader="The Example Band",
+                            duration=242,
+                            view_count=2000000,
+                            channel_follower_count=900000,
+                            channel_is_verified=True,
+                        )
+                    ]
+                ),
+                scorer=ClipScorer(minimum_score=75),
+                downloader=downloader,
+            )
+
+            summary = service.sync_once()
+
+            self.assertEqual(summary["downloaded"], 1)
+            self.assertEqual(summary["no_match"], 0)
+            self.assertEqual(len(downloader.downloads), 1)
+            clip = index.get_clip_by_track(42)
+            self.assertIsNotNone(clip)
+            self.assertEqual(clip["video_id"], "abc123")
+            self.assertEqual(clip["navidrome_song_id"], "nav-song-42")
+
+    def test_sync_once_records_no_match_when_all_candidates_are_rejected(self):
+        index = ClipIndex(":memory:")
+        service = LidaClipsService(
+            index=index,
+            lidarr_client=FakeLidarr([self.make_target()]),
+            candidate_search=FakeSearch(
+                [
+                    Candidate(
+                        video_id="topic123",
+                        title="Bright Lights",
+                        webpage_url="https://www.youtube.com/watch?v=topic123",
+                        channel="The Example Band - Topic",
+                        uploader="The Example Band - Topic",
+                        duration=240,
+                        view_count=9000000,
+                        channel_follower_count=900000,
+                        channel_is_verified=True,
+                    )
+                ]
+            ),
+            scorer=ClipScorer(minimum_score=75),
+            downloader=FakeDownloader("/unused/clip.mp4"),
+        )
+
+        summary = service.sync_once()
+
+        self.assertEqual(summary["downloaded"], 0)
+        self.assertEqual(summary["no_match"], 1)
+        self.assertFalse(index.has_completed_clip(42))
+        self.assertEqual(index.get_failure(42)["reason"], "no_match")
+
+    def test_sync_once_chooses_best_accepted_candidate_not_highest_rejected_score(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index = ClipIndex(":memory:")
+            downloader = FakeDownloader(os.path.join(temp_dir, "clip.mp4"))
+            service = LidaClipsService(
+                index=index,
+                lidarr_client=FakeLidarr([self.make_target()]),
+                candidate_search=FakeSearch(
+                    [
+                        Candidate(video_id="rejected-high", title="Wrong", webpage_url="https://example.test/rejected"),
+                        Candidate(video_id="accepted-lower", title="Right", webpage_url="https://example.test/accepted"),
+                    ]
+                ),
+                scorer=FakeScorer(),
+                downloader=downloader,
+            )
+
+            summary = service.sync_once()
+
+            self.assertEqual(summary["downloaded"], 1)
+            self.assertEqual(downloader.downloads[0][1].video_id, "accepted-lower")
+            self.assertEqual(index.get_clip_by_track(42)["video_id"], "accepted-lower")
+
+
+if __name__ == "__main__":
+    unittest.main()

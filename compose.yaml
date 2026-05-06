@@ -1,0 +1,15 @@
+services:
+  lidaclips:
+    build: .
+    image: lidaclips:latest
+    container_name: lidaclips
+    env_file:
+      - .env
+    volumes:
+      - ./config:/lidaclips/config
+      - ./clips:/lidaclips/clips
+      - ./staging:/lidaclips/staging
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - 5000:5000
+    restart: unless-stopped
