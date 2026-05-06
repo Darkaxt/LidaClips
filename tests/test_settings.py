@@ -16,6 +16,8 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(settings.sync_schedule, [])
             self.assertEqual(settings.sync_artist_allowlist, [])
             self.assertEqual(settings.max_targets_per_run, 25)
+            self.assertEqual(settings.minimum_fallback_score, 60)
+            self.assertEqual(settings.upgrade_min_score_delta, 10)
             self.assertFalse(settings.download_enabled)
             self.assertEqual(settings.youtube_po_provider, "off")
             self.assertEqual(settings.youtube_po_provider_url, "http://lidaclips-pot:4416")
@@ -42,6 +44,8 @@ class SettingsTests(unittest.TestCase):
                     "sync_artist_allowlist": "The Example Band, Another Artist",
                     "max_targets_per_run": "10",
                     "download_enabled": "true",
+                    "minimum_fallback_score": "55",
+                    "upgrade_min_score_delta": "12",
                     "youtube_po_provider": "bgutil_http",
                     "youtube_po_provider_url": "http://pot:4416",
                     "youtube_player_clients": "mweb, default",
@@ -55,6 +59,8 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(settings.sync_schedule, [0, 2, 20])
             self.assertEqual(settings.sync_artist_allowlist, ["The Example Band", "Another Artist"])
             self.assertEqual(settings.max_targets_per_run, 10)
+            self.assertEqual(settings.minimum_fallback_score, 55)
+            self.assertEqual(settings.upgrade_min_score_delta, 12)
             self.assertTrue(settings.download_enabled)
             self.assertEqual(settings.youtube_po_provider, "bgutil_http")
             self.assertEqual(settings.youtube_po_provider_url, "http://pot:4416")

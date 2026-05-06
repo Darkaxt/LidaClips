@@ -28,9 +28,34 @@ class ClipScorerTests(unittest.TestCase):
         )
 
         self.assertTrue(decision.accepted)
+        self.assertEqual(decision.quality_tier, "official")
         self.assertGreaterEqual(decision.score, 75)
         self.assertIn("official", decision.reasons)
         self.assertIn("verified_channel", decision.reasons)
+
+    def test_verified_artist_channel_non_official_match_is_fallback(self):
+        candidate = Candidate(
+            video_id="fallback123",
+            title="The Example Band - Bright Lights",
+            webpage_url="https://www.youtube.com/watch?v=fallback123",
+            channel="The Example Band",
+            uploader="The Example Band",
+            duration=242,
+            view_count=2_500_000,
+            channel_follower_count=900_000,
+            channel_is_verified=True,
+        )
+
+        decision = self.scorer.score(
+            artist="The Example Band",
+            title="Bright Lights",
+            expected_duration=240,
+            candidate=candidate,
+        )
+
+        self.assertTrue(decision.accepted)
+        self.assertEqual(decision.quality_tier, "fallback")
+        self.assertNotIn("official", decision.reasons)
 
     def test_rejects_topic_audio_even_when_title_matches(self):
         candidate = Candidate(
@@ -53,6 +78,7 @@ class ClipScorerTests(unittest.TestCase):
         )
 
         self.assertFalse(decision.accepted)
+        self.assertEqual(decision.quality_tier, "rejected")
         self.assertEqual(decision.rejection_reason, "blocked_keyword")
 
     def test_rejects_lyric_live_cover_and_visualizer_variants(self):
@@ -83,6 +109,7 @@ class ClipScorerTests(unittest.TestCase):
                 )
 
                 self.assertFalse(decision.accepted)
+                self.assertEqual(decision.quality_tier, "rejected")
                 self.assertEqual(decision.rejection_reason, "blocked_keyword")
 
     def test_rejects_wrong_artist_even_if_video_is_popular(self):
@@ -106,7 +133,32 @@ class ClipScorerTests(unittest.TestCase):
         )
 
         self.assertFalse(decision.accepted)
+        self.assertEqual(decision.quality_tier, "rejected")
         self.assertEqual(decision.rejection_reason, "low_score")
+
+    def test_multi_song_music_video_cannot_be_official(self):
+        candidate = Candidate(
+            video_id="medley123",
+            title="The Example Band - Bright Lights / City Glow (Music Video)",
+            webpage_url="https://www.youtube.com/watch?v=medley123",
+            channel="The Example Band",
+            uploader="The Example Band",
+            duration=242,
+            view_count=2_500_000,
+            channel_follower_count=900_000,
+            channel_is_verified=True,
+        )
+
+        decision = self.scorer.score(
+            artist="The Example Band",
+            title="Bright Lights",
+            expected_duration=240,
+            candidate=candidate,
+        )
+
+        self.assertTrue(decision.accepted)
+        self.assertEqual(decision.quality_tier, "fallback")
+        self.assertNotIn("official", decision.reasons)
 
 
 if __name__ == "__main__":

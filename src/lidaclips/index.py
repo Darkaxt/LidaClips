@@ -49,8 +49,10 @@ class ClipIndex:
                     file_path TEXT NOT NULL,
                     mime_type TEXT NOT NULL,
                     score REAL NOT NULL,
+                    quality_tier TEXT NOT NULL DEFAULT 'fallback',
                     evidence_json TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'completed',
+                    replaced_by_clip_id INTEGER,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(lidarr_track_id) REFERENCES tracks(lidarr_track_id)
@@ -66,6 +68,7 @@ class ClipIndex:
                     source_url TEXT NOT NULL,
                     title TEXT NOT NULL,
                     score REAL NOT NULL,
+                    quality_tier TEXT NOT NULL DEFAULT 'rejected',
                     accepted INTEGER NOT NULL,
                     evidence_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
@@ -81,6 +84,7 @@ class ClipIndex:
                 );
                 """
             )
+            self._migrate_schema()
 
     def close(self) -> None:
         self.connection.close()
@@ -156,6 +160,13 @@ class ClipIndex:
         ).fetchone()
         return row is not None
 
+    def has_active_official_clip(self, lidarr_track_id: int) -> bool:
+        row = self.connection.execute(
+            "SELECT 1 FROM clips WHERE lidarr_track_id = ? AND status = 'completed' AND quality_tier = 'official' LIMIT 1",
+            (lidarr_track_id,),
+        ).fetchone()
+        return row is not None
+
     def record_clip(
         self,
         lidarr_track_id: int,
@@ -166,16 +177,18 @@ class ClipIndex:
         mime_type: str,
         score: float,
         evidence: dict[str, Any],
+        quality_tier: str | None = None,
     ) -> int:
         now = utc_now()
+        resolved_tier = quality_tier or evidence.get("quality_tier") or self._tier_from_evidence(evidence, accepted=True)
         with self.connection:
             cursor = self.connection.execute(
                 """
                 INSERT INTO clips (
                     lidarr_track_id, video_id, source_url, title, file_path, mime_type,
-                    score, evidence_json, status, created_at, updated_at
+                    score, quality_tier, evidence_json, status, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)
                 """,
                 (
                     lidarr_track_id,
@@ -185,6 +198,7 @@ class ClipIndex:
                     file_path,
                     mime_type,
                     score,
+                    resolved_tier,
                     json.dumps(evidence, sort_keys=True),
                     now,
                     now,
@@ -193,14 +207,25 @@ class ClipIndex:
             self.connection.execute("DELETE FROM failures WHERE lidarr_track_id = ?", (lidarr_track_id,))
             return int(cursor.lastrowid)
 
-    def record_candidate(self, lidarr_track_id: int, video_id: str, source_url: str, title: str, score: float, accepted: bool, evidence: dict[str, Any]) -> None:
+    def record_candidate(
+        self,
+        lidarr_track_id: int,
+        video_id: str,
+        source_url: str,
+        title: str,
+        score: float,
+        accepted: bool,
+        evidence: dict[str, Any],
+        quality_tier: str | None = None,
+    ) -> None:
+        resolved_tier = quality_tier or evidence.get("quality_tier") or self._tier_from_evidence(evidence, accepted=accepted)
         with self.connection:
             self.connection.execute(
                 """
-                INSERT INTO candidates (lidarr_track_id, video_id, source_url, title, score, accepted, evidence_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO candidates (lidarr_track_id, video_id, source_url, title, score, quality_tier, accepted, evidence_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (lidarr_track_id, video_id, source_url, title, score, 1 if accepted else 0, json.dumps(evidence, sort_keys=True), utc_now()),
+                (lidarr_track_id, video_id, source_url, title, score, resolved_tier, 1 if accepted else 0, json.dumps(evidence, sort_keys=True), utc_now()),
             )
 
     def record_no_match(self, lidarr_track_id: int, reason: str = "no_match", retry_after: str | None = None) -> None:
@@ -224,15 +249,16 @@ class ClipIndex:
         ).fetchone()
         return dict(row) if row is not None else None
 
-    def get_clip_by_id(self, clip_id: int) -> dict[str, Any] | None:
+    def get_clip_by_id(self, clip_id: int, include_replaced: bool = False) -> dict[str, Any] | None:
+        status_condition = "" if include_replaced else "AND clips.status = 'completed'"
         row = self.connection.execute(
-            """
+            f"""
             SELECT clips.*, tracks.artist, tracks.album, tracks.album_year, tracks.title AS track_title,
                    tracks.track_number, tracks.absolute_track_number, tracks.duration, tracks.source_file_path,
                    tracks.navidrome_song_id
             FROM clips
             JOIN tracks ON tracks.lidarr_track_id = clips.lidarr_track_id
-            WHERE clips.id = ? AND clips.status = 'completed'
+            WHERE clips.id = ? {status_condition}
             """,
             (clip_id,),
         ).fetchone()
@@ -328,6 +354,31 @@ class ClipIndex:
                 (file_path, utc_now(), clip_id),
             )
 
+    def active_fallback_clips(self) -> list[dict[str, Any]]:
+        rows = self.connection.execute(
+            """
+            SELECT clips.*, tracks.artist, tracks.album, tracks.album_year, tracks.title AS track_title,
+                   tracks.track_number, tracks.absolute_track_number, tracks.duration, tracks.source_file_path,
+                   tracks.navidrome_song_id
+            FROM clips
+            JOIN tracks ON tracks.lidarr_track_id = clips.lidarr_track_id
+            WHERE clips.status = 'completed' AND clips.quality_tier = 'fallback'
+            ORDER BY tracks.artist, tracks.album, tracks.absolute_track_number, tracks.title
+            """
+        ).fetchall()
+        return [self._clip_row_to_dict(row) for row in rows if row is not None]
+
+    def mark_clip_replaced(self, clip_id: int, replaced_by_clip_id: int) -> None:
+        with self.connection:
+            self.connection.execute(
+                """
+                UPDATE clips
+                SET status = 'replaced', replaced_by_clip_id = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (replaced_by_clip_id, utc_now(), clip_id),
+            )
+
     def _clip_row_to_dict(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
         if row is None:
             return None
@@ -335,3 +386,57 @@ class ClipIndex:
         payload["evidence"] = json.loads(payload.pop("evidence_json") or "{}")
         payload["stream_url"] = f"/api/v1/stream/{payload['id']}"
         return payload
+
+    def _migrate_schema(self) -> None:
+        self._ensure_column("clips", "quality_tier", "TEXT NOT NULL DEFAULT 'fallback'")
+        self._ensure_column("clips", "replaced_by_clip_id", "INTEGER")
+        self._ensure_column("candidates", "quality_tier", "TEXT NOT NULL DEFAULT 'rejected'")
+        self.connection.execute(
+            """
+            UPDATE clips
+            SET quality_tier = 'official'
+            WHERE evidence_json LIKE '%official%'
+            """
+        )
+        self.connection.execute(
+            """
+            UPDATE candidates
+            SET quality_tier = 'official'
+            WHERE accepted = 1 AND evidence_json LIKE '%official%'
+            """
+        )
+        self.connection.execute(
+            """
+            UPDATE candidates
+            SET quality_tier = 'fallback'
+            WHERE accepted = 1 AND quality_tier NOT IN ('official', 'fallback')
+            """
+        )
+        self.connection.execute(
+            """
+            UPDATE candidates
+            SET quality_tier = 'rejected'
+            WHERE accepted = 0 AND quality_tier NOT IN ('official', 'fallback', 'rejected')
+            """
+        )
+
+    def _ensure_column(self, table: str, column: str, definition: str) -> None:
+        columns = {
+            row["name"]
+            for row in self.connection.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if column not in columns:
+            self.connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+    def _tier_from_evidence(self, evidence: dict[str, Any], accepted: bool) -> str:
+        if not accepted:
+            return "rejected"
+        quality_tier = evidence.get("quality_tier")
+        if quality_tier in {"official", "fallback", "rejected"}:
+            return quality_tier
+        reasons = evidence.get("reasons") or []
+        if isinstance(reasons, list) and "official" in reasons:
+            return "official"
+        if evidence.get("official"):
+            return "official"
+        return "fallback"

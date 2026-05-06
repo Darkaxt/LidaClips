@@ -1,0 +1,145 @@
+import json
+import os
+import sqlite3
+import tempfile
+import unittest
+
+from lidaclips.index import ClipIndex
+from lidaclips.models import ClipTarget
+
+
+class IndexMigrationTests(unittest.TestCase):
+    def make_target(self, lidarr_track_id=42, title="Bright Lights"):
+        return ClipTarget(
+            lidarr_track_id=lidarr_track_id,
+            artist_id=1,
+            album_id=10,
+            artist="The Example Band",
+            album="Neon Nights",
+            album_year=2020,
+            title=title,
+            track_number="1",
+            absolute_track_number=1,
+            duration=240,
+            source_file_path="/music/song.flac",
+        )
+
+    def test_migrates_existing_clip_tiers_from_evidence(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "lidaclips.db")
+            connection = sqlite3.connect(db_path)
+            connection.executescript(
+                """
+                CREATE TABLE tracks (
+                    lidarr_track_id INTEGER PRIMARY KEY,
+                    artist_id INTEGER NOT NULL,
+                    album_id INTEGER NOT NULL,
+                    artist TEXT NOT NULL,
+                    album TEXT NOT NULL,
+                    album_year INTEGER,
+                    title TEXT NOT NULL,
+                    track_number TEXT,
+                    absolute_track_number INTEGER,
+                    duration INTEGER,
+                    source_file_path TEXT,
+                    navidrome_song_id TEXT,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE clips (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lidarr_track_id INTEGER NOT NULL,
+                    video_id TEXT NOT NULL,
+                    source_url TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    mime_type TEXT NOT NULL,
+                    score REAL NOT NULL,
+                    evidence_json TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'completed',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE candidates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lidarr_track_id INTEGER NOT NULL,
+                    video_id TEXT NOT NULL,
+                    source_url TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    score REAL NOT NULL,
+                    accepted INTEGER NOT NULL,
+                    evidence_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE failures (
+                    lidarr_track_id INTEGER PRIMARY KEY,
+                    reason TEXT NOT NULL,
+                    retry_after TEXT,
+                    updated_at TEXT NOT NULL
+                );
+                """
+            )
+            now = "2026-05-06T00:00:00+00:00"
+            connection.execute(
+                "INSERT INTO tracks VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (42, 1, 10, "The Example Band", "Neon Nights", 2020, "Bright Lights", "1", 1, 240, "/music/song.flac", None, now),
+            )
+            connection.execute(
+                "INSERT INTO tracks VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (43, 1, 10, "The Example Band", "Neon Nights", 2020, "City Glow", "2", 2, 240, "/music/city.flac", None, now),
+            )
+            connection.execute(
+                "INSERT INTO clips VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (1, 42, "official123", "https://example.test/official", "Official", "/clips/official.mp4", "video/mp4", 95.0, json.dumps({"reasons": ["official"]}), "completed", now, now),
+            )
+            connection.execute(
+                "INSERT INTO clips VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (2, 43, "fallback123", "https://example.test/fallback", "Fallback", "/clips/fallback.mp4", "video/mp4", 88.0, json.dumps({"reasons": ["verified_channel"]}), "completed", now, now),
+            )
+            connection.commit()
+            connection.close()
+
+            index = ClipIndex(db_path)
+
+            self.assertEqual(index.get_clip_by_track(42)["quality_tier"], "official")
+            self.assertEqual(index.get_clip_by_track(43)["quality_tier"], "fallback")
+            columns = {row["name"] for row in index.connection.execute("PRAGMA table_info(clips)")}
+            self.assertIn("quality_tier", columns)
+            self.assertIn("replaced_by_clip_id", columns)
+            index.close()
+
+    def test_replaced_clips_are_not_returned_by_public_lookups(self):
+        index = ClipIndex(":memory:")
+        target = self.make_target()
+        index.upsert_track(target)
+        old_id = index.record_clip(
+            lidarr_track_id=42,
+            video_id="fallback-old",
+            source_url="https://example.test/old",
+            title="Old",
+            file_path="/clips/old.mp4",
+            mime_type="video/mp4",
+            score=80.0,
+            evidence={"quality_tier": "fallback"},
+            quality_tier="fallback",
+        )
+        new_id = index.record_clip(
+            lidarr_track_id=42,
+            video_id="official-new",
+            source_url="https://example.test/new",
+            title="New",
+            file_path="/clips/new.mp4",
+            mime_type="video/mp4",
+            score=95.0,
+            evidence={"quality_tier": "official", "reasons": ["official"]},
+            quality_tier="official",
+        )
+
+        index.mark_clip_replaced(old_id, new_id)
+
+        self.assertEqual(index.get_clip_by_track(42)["id"], new_id)
+        self.assertIsNone(index.get_clip_by_id(old_id))
+        self.assertEqual(index.get_clip_by_id(old_id, include_replaced=True)["status"], "replaced")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -83,6 +83,8 @@ clip_output_mode=clips_lane
 clip_output_path=/lidaclips/clips
 staging_path=/lidaclips/staging
 minimum_clip_score=80
+minimum_fallback_score=60
+upgrade_min_score_delta=10
 max_resolution=720
 preferred_container=mp4
 youtube_po_provider=bgutil_http
@@ -98,6 +100,8 @@ CLIPS_BASIC_AUTH_HASH=change-me
 ```
 
 The `lidaclips-pot` service is internal-only. Do not add Traefik labels or host port publishing for it. LidaClips uses it only for the primary DASH attempt; HLS fallback remains enabled.
+
+Fallback clips remain visible through the same API routes as official clips. Upgrade runs replace active fallback clips when an official candidate appears or the same tier improves by `upgrade_min_score_delta`; old files are deleted after a successful replacement while replaced DB rows are retained for audit history.
 
 ## Uptime Kuma
 

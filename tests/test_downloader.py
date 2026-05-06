@@ -1,6 +1,8 @@
 import os
+import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from lidaclips.downloader import ClipDownloader
 from lidaclips.models import ClipTarget
@@ -75,6 +77,8 @@ class DownloaderTests(unittest.TestCase):
 
             self.assertEqual(created[0].downloaded, ["https://www.youtube.com/watch?v=abc123"])
             self.assertIn("height<=720", created[0].options["format"])
+            self.assertIn("vcodec^=avc1", created[0].options["format"])
+            self.assertIn("acodec^=mp4a", created[0].options["format"])
             self.assertEqual(created[0].options["merge_output_format"], "mp4")
             self.assertEqual(result["mime_type"], "video/mp4")
             self.assertTrue(result["file_path"].endswith(os.path.join("Neon Nights (2020)", "01 - Bright Lights.mp4")))
@@ -148,9 +152,61 @@ class DownloaderTests(unittest.TestCase):
             result = downloader.download(target, candidate)
 
             self.assertEqual(len(created), 2)
-            self.assertIn("bv*[height<=720]+ba", created[0].options["format"])
+            self.assertIn("vcodec^=avc1", created[0].options["format"])
+            self.assertIn("acodec^=mp4a", created[0].options["format"])
             self.assertIn("protocol*=m3u8", created[1].options["format"])
             self.assertTrue(os.path.exists(result["file_path"]))
+
+    def test_download_transcodes_non_compatible_mp4_before_finalizing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            created = []
+
+            def factory(options):
+                instance = FakeYtDlp(options)
+                created.append(instance)
+                return instance
+
+            def fake_run(command, check, capture_output=False, text=False):
+                if command[0] == "ffprobe":
+                    return subprocess.CompletedProcess(
+                        command,
+                        0,
+                        stdout='{"streams":[{"codec_type":"video","codec_name":"av1"},{"codec_type":"audio","codec_name":"opus"}]}',
+                        stderr="",
+                    )
+                if command[0] == "ffmpeg":
+                    output_path = command[-1]
+                    with open(output_path, "wb") as handle:
+                        handle.write(b"compatible")
+                    return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+                raise AssertionError(command)
+
+            target = ClipTarget(
+                lidarr_track_id=42,
+                artist_id=1,
+                album_id=10,
+                artist="The Example Band",
+                album="Neon Nights",
+                album_year=2020,
+                title="Bright Lights",
+                track_number="1",
+                absolute_track_number=1,
+                duration=240,
+                source_file_path="/music/song.flac",
+            )
+            candidate = Candidate(video_id="abc123", title="Official", webpage_url="https://www.youtube.com/watch?v=abc123")
+            storage = ClipStorage(
+                output_mode="clips_lane",
+                output_path=os.path.join(temp_dir, "clips"),
+                staging_path=os.path.join(temp_dir, "staging"),
+            )
+            downloader = ClipDownloader(storage=storage, ytdlp_factory=factory, preferred_container="mp4")
+
+            with patch("lidaclips.downloader.subprocess.run", side_effect=fake_run):
+                result = downloader.download(target, candidate)
+
+            with open(result["file_path"], "rb") as handle:
+                self.assertEqual(handle.read(), b"compatible")
 
     def test_download_passes_po_token_args_only_to_primary_dash_attempt(self):
         with tempfile.TemporaryDirectory() as temp_dir:

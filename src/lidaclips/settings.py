@@ -23,6 +23,8 @@ class Settings:
     clip_output_path: str = "/lidaclips/clips"
     staging_path: str = "/lidaclips/staging"
     minimum_clip_score: float = 75.0
+    minimum_fallback_score: float = 60.0
+    upgrade_min_score_delta: float = 10.0
     max_resolution: int = 1080
     preferred_container: str = "mp4"
     api_key: str = ""
@@ -76,6 +78,8 @@ class Settings:
         data["sleep_interval"] = float(data["sleep_interval"])
         data["lidarr_api_timeout"] = float(data["lidarr_api_timeout"])
         data["minimum_clip_score"] = float(data["minimum_clip_score"])
+        data["minimum_fallback_score"] = float(data["minimum_fallback_score"])
+        data["upgrade_min_score_delta"] = float(data["upgrade_min_score_delta"])
         settings = cls(**data)
         settings.save(config_path)
         return settings
@@ -129,6 +133,6 @@ class Settings:
             return int(value)
         if key in {"download_enabled", "youtube_enable_hls_fallback"}:
             return Settings.parse_bool(value)
-        if key in {"sleep_interval", "lidarr_api_timeout", "minimum_clip_score"}:
+        if key in {"sleep_interval", "lidarr_api_timeout", "minimum_clip_score", "minimum_fallback_score", "upgrade_min_score_delta"}:
             return float(value)
         return value

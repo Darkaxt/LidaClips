@@ -1,6 +1,8 @@
 import glob
+import json
 import os
 import shutil
+import subprocess
 from typing import Callable
 
 import httpx
@@ -52,7 +54,7 @@ class ClipDownloader:
         else:
             raise errors[-1]
 
-        staged_path = self._find_staged_file(staged_template)
+        staged_path = self._ensure_container_compatibility(self._find_staged_file(staged_template))
         conflict_checker = None
         if self.path_conflict_checker is not None:
             conflict_checker = lambda path: self.path_conflict_checker(path, target)
@@ -62,10 +64,10 @@ class ClipDownloader:
 
     def _download_attempts(self) -> list[tuple[str, bool]]:
         attempts = [
-            f"bv*[height<={self.max_resolution}]+ba/b[height<={self.max_resolution}]/best",
+            f"bv*[vcodec^=avc1][height<={self.max_resolution}]+ba[acodec^=mp4a]/b[vcodec^=avc1][acodec^=mp4a][height<={self.max_resolution}]/best[vcodec^=avc1][height<={self.max_resolution}]/best[height<={self.max_resolution}]/best",
         ]
         if self.youtube_enable_hls_fallback:
-            attempts.append(f"best[protocol*=m3u8][height<={self.max_resolution}]/best[height<={self.max_resolution}]/best")
+            attempts.append(f"best[protocol*=m3u8][vcodec^=avc1][acodec^=mp4a][height<={self.max_resolution}]/best[protocol*=m3u8][height<={self.max_resolution}]/best[height<={self.max_resolution}]/best")
         return [(format_selector, index == 0) for index, format_selector in enumerate(attempts)]
 
     def _options(self, staged_template: str, format_selector: str, use_po_provider: bool = False) -> dict:
@@ -132,3 +134,73 @@ class ClipDownloader:
         if not matches:
             raise FileNotFoundError(f"No staged download matched {pattern}")
         return matches[0]
+
+    def _ensure_container_compatibility(self, staged_path: str) -> str:
+        if self.preferred_container != "mp4":
+            return staged_path
+        if not self._needs_mp4_transcode(staged_path):
+            return staged_path
+
+        base, _ = os.path.splitext(staged_path)
+        compatible_path = f"{base}.compatible.mp4"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                staged_path,
+                "-map",
+                "0:v:0",
+                "-map",
+                "0:a?",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "20",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "160k",
+                "-movflags",
+                "+faststart",
+                compatible_path,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        os.remove(staged_path)
+        return compatible_path
+
+    def _needs_mp4_transcode(self, staged_path: str) -> bool:
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "stream=codec_type,codec_name",
+                    "-of",
+                    "json",
+                    staged_path,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            payload = json.loads(result.stdout or "{}")
+        except Exception:
+            return False
+        streams = payload.get("streams") or []
+        video_codecs = {stream.get("codec_name") for stream in streams if stream.get("codec_type") == "video"}
+        audio_codecs = {stream.get("codec_name") for stream in streams if stream.get("codec_type") == "audio"}
+        if not video_codecs:
+            return True
+        if video_codecs - {"h264"}:
+            return True
+        return bool(audio_codecs and audio_codecs - {"aac"})

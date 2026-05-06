@@ -56,7 +56,6 @@ BLOCKED_KEYWORDS = {
 OFFICIAL_KEYWORDS = {
     "official music video",
     "official video",
-    "music video",
 }
 
 
@@ -82,24 +81,29 @@ class MatchDecision:
     score: float
     reasons: tuple[str, ...]
     rejection_reason: str | None = None
+    quality_tier: str = "rejected"
 
     def to_evidence(self) -> dict[str, Any]:
         return {
             "accepted": self.accepted,
             "score": self.score,
+            "quality_tier": self.quality_tier,
             "reasons": list(self.reasons),
             "rejection_reason": self.rejection_reason,
         }
 
 
 class ClipScorer:
-    def __init__(self, minimum_score: float = 75.0):
+    TIER_RANK = {"rejected": 0, "fallback": 1, "official": 2}
+
+    def __init__(self, minimum_score: float = 75.0, minimum_fallback_score: float = 60.0):
         self.minimum_score = float(minimum_score)
+        self.minimum_fallback_score = float(minimum_fallback_score)
 
     def score(self, artist: str, title: str, expected_duration: int | None, candidate: Candidate) -> MatchDecision:
         blocked = self._blocked_reason(candidate)
         if blocked:
-            return MatchDecision(False, 0.0, tuple(sorted(blocked)), "blocked_keyword")
+            return MatchDecision(False, 0.0, tuple(sorted(blocked)), "blocked_keyword", "rejected")
 
         artist_norm = normalize_text(artist)
         title_norm = normalize_text(title)
@@ -125,7 +129,8 @@ class ClipScorer:
         score += artist_ratio * 0.22
         score += duration_score * 0.12
 
-        if self._looks_official(candidate):
+        official_signal = self._looks_official(artist, title, candidate)
+        if official_signal:
             score += 12
             reasons.append("official")
         if candidate.channel_is_verified:
@@ -144,24 +149,33 @@ class ClipScorer:
         score = min(round(score, 2), 100.0)
 
         if artist_ratio < 55:
-            return MatchDecision(False, score, tuple(reasons), "low_score")
+            return MatchDecision(False, score, tuple(reasons), "low_score", "rejected")
         if title_ratio < 70:
-            return MatchDecision(False, score, tuple(reasons), "low_score")
-        if score < self.minimum_score:
-            return MatchDecision(False, score, tuple(reasons), "low_score")
-        return MatchDecision(True, score, tuple(reasons), None)
+            return MatchDecision(False, score, tuple(reasons), "low_score", "rejected")
+        if official_signal and score >= self.minimum_score:
+            return MatchDecision(True, score, tuple(reasons), None, "official")
+        if score >= self.minimum_fallback_score:
+            return MatchDecision(True, score, tuple(reasons), None, "fallback")
+        return MatchDecision(False, score, tuple(reasons), "low_score", "rejected")
 
     def choose_best(self, artist: str, title: str, expected_duration: int | None, candidates: Iterable[Candidate]) -> tuple[Candidate | None, MatchDecision | None]:
         best_candidate: Candidate | None = None
         best_decision: MatchDecision | None = None
         for candidate in candidates:
             decision = self.score(artist, title, expected_duration, candidate)
-            if best_decision is None or decision.score > best_decision.score:
+            if best_decision is None or self._is_better(decision, best_decision):
                 best_candidate = candidate
                 best_decision = decision
         if best_decision and best_decision.accepted:
             return best_candidate, best_decision
         return None, best_decision
+
+    def _is_better(self, candidate: MatchDecision, current: MatchDecision) -> bool:
+        candidate_rank = self.TIER_RANK.get(candidate.quality_tier, 0)
+        current_rank = self.TIER_RANK.get(current.quality_tier, 0)
+        if candidate_rank != current_rank:
+            return candidate_rank > current_rank
+        return candidate.score > current.score
 
     def _blocked_reason(self, candidate: Candidate) -> set[str]:
         haystacks = [
@@ -183,12 +197,24 @@ class ClipScorer:
                     reasons.add(keyword)
         return reasons
 
-    def _looks_official(self, candidate: Candidate) -> bool:
+    def _looks_official(self, artist: str, title: str, candidate: Candidate) -> bool:
         title_norm = normalize_text(candidate.title)
         channel_norm = normalize_text(candidate.channel or candidate.uploader)
-        if any(keyword in title_norm for keyword in OFFICIAL_KEYWORDS):
+        if self._looks_like_medley(artist, title, candidate):
+            return False
+        if re.search(r"\bofficial\b.*\b(music\s+)?video\b", title_norm):
             return True
         return channel_norm.endswith("vevo")
+
+    def _looks_like_medley(self, artist: str, title: str, candidate: Candidate) -> bool:
+        candidate_title = candidate.title or ""
+        title_without_artist = candidate_title
+        artist_text = artist or ""
+        if artist_text and candidate_title.lower().startswith(artist_text.lower()):
+            title_without_artist = candidate_title[len(artist_text):]
+        if "/" not in title_without_artist and "\\" not in title_without_artist:
+            return False
+        return "/" not in (title or "") and "\\" not in (title or "")
 
     def _looks_like_artist_channel(self, artist_norm: str, channel_norm: str, candidate: Candidate) -> bool:
         if not artist_norm or not channel_norm:

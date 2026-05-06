@@ -14,6 +14,9 @@ class FakeLidarr:
     def __init__(self, targets):
         self.targets = targets
 
+    def collect_present_tracks(self):
+        return self.targets
+
     def collect_pending_tracks(self, index):
         for target in self.targets:
             index.upsert_track(target, navidrome_song_id="nav-song-42")
@@ -69,19 +72,26 @@ class FakePoDownloader(FakeDownloader):
 
 
 class FakeDecision:
-    def __init__(self, accepted, score):
+    def __init__(self, accepted, score, quality_tier="fallback"):
         self.accepted = accepted
         self.score = score
+        self.quality_tier = quality_tier
 
     def to_evidence(self):
-        return {"accepted": self.accepted, "score": self.score}
+        return {"accepted": self.accepted, "score": self.score, "quality_tier": self.quality_tier}
 
 
 class FakeScorer:
     def score(self, artist, title, expected_duration, candidate):
         if candidate.video_id == "rejected-high":
-            return FakeDecision(False, 99)
-        return FakeDecision(True, 80)
+            return FakeDecision(False, 99, "rejected")
+        if candidate.video_id.startswith("official"):
+            return FakeDecision(True, 90, "official")
+        if candidate.video_id.startswith("fallback-high"):
+            return FakeDecision(True, 95, "fallback")
+        if candidate.video_id.startswith("fallback-low"):
+            return FakeDecision(True, 80, "fallback")
+        return FakeDecision(True, 80, "fallback")
 
 
 class ServiceTests(unittest.TestCase):
@@ -150,7 +160,34 @@ class ServiceTests(unittest.TestCase):
             clip = index.get_clip_by_track(42)
             self.assertIsNotNone(clip)
             self.assertEqual(clip["video_id"], "abc123")
-            self.assertEqual(clip["navidrome_song_id"], "nav-song-42")
+            self.assertEqual(clip["quality_tier"], "official")
+
+    def test_sync_once_downloads_best_fallback_when_no_official_exists(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index = ClipIndex(":memory:")
+            downloader = FakeDownloader(os.path.join(temp_dir, "clip.mp4"))
+            service = LidaClipsService(
+                index=index,
+                lidarr_client=FakeLidarr([self.make_target()]),
+                candidate_search=FakeSearch(
+                    [
+                        Candidate(video_id="fallback-low", title="Bright Lights", webpage_url="https://example.test/low"),
+                        Candidate(video_id="fallback-high", title="Bright Lights", webpage_url="https://example.test/high"),
+                    ]
+                ),
+                scorer=FakeScorer(),
+                downloader=downloader,
+            )
+
+            summary = service.sync_once()
+
+            self.assertEqual(summary["downloaded"], 1)
+            self.assertEqual(summary["fallback_downloaded"], 1)
+            self.assertEqual(summary["official_downloaded"], 0)
+            self.assertEqual(downloader.downloads[0][1].video_id, "fallback-high")
+            clip = index.get_clip_by_track(42)
+            self.assertEqual(clip["video_id"], "fallback-high")
+            self.assertEqual(clip["quality_tier"], "fallback")
 
     def test_sync_once_records_no_match_when_all_candidates_are_rejected(self):
         index = ClipIndex(":memory:")
@@ -205,6 +242,120 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(summary["downloaded"], 1)
             self.assertEqual(downloader.downloads[0][1].video_id, "accepted-lower")
             self.assertEqual(index.get_clip_by_track(42)["video_id"], "accepted-lower")
+
+    def test_sync_once_upgrades_existing_fallback_to_official_and_deletes_old_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index = ClipIndex(":memory:")
+            old_path = os.path.join(temp_dir, "old.mp4")
+            with open(old_path, "wb") as handle:
+                handle.write(b"old")
+            target = self.make_target()
+            index.upsert_track(target)
+            old_clip_id = index.record_clip(
+                lidarr_track_id=42,
+                video_id="fallback-old",
+                source_url="https://example.test/old",
+                title="Bright Lights",
+                file_path=old_path,
+                mime_type="video/mp4",
+                score=80.0,
+                evidence={"accepted": True, "quality_tier": "fallback", "score": 80.0},
+                quality_tier="fallback",
+            )
+            new_path = os.path.join(temp_dir, "new.mp4")
+            downloader = FakeDownloader(new_path)
+            service = LidaClipsService(
+                index=index,
+                lidarr_client=FakeLidarr([target]),
+                candidate_search=FakeSearch(
+                    [Candidate(video_id="official-new", title="Bright Lights", webpage_url="https://example.test/new")]
+                ),
+                scorer=FakeScorer(),
+                downloader=downloader,
+            )
+
+            summary = service.sync_once()
+
+            self.assertEqual(summary["upgrade_targets"], 1)
+            self.assertEqual(summary["upgraded"], 1)
+            self.assertFalse(os.path.exists(old_path))
+            active = index.get_clip_by_track(42)
+            self.assertEqual(active["video_id"], "official-new")
+            self.assertEqual(active["quality_tier"], "official")
+            replaced = index.get_clip_by_id(old_clip_id, include_replaced=True)
+            self.assertEqual(replaced["status"], "replaced")
+            self.assertEqual(replaced["replaced_by_clip_id"], active["id"])
+
+    def test_sync_once_does_not_replace_fallback_with_lower_or_equal_fallback(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index = ClipIndex(":memory:")
+            old_path = os.path.join(temp_dir, "old.mp4")
+            with open(old_path, "wb") as handle:
+                handle.write(b"old")
+            target = self.make_target()
+            index.upsert_track(target)
+            index.record_clip(
+                lidarr_track_id=42,
+                video_id="fallback-old",
+                source_url="https://example.test/old",
+                title="Bright Lights",
+                file_path=old_path,
+                mime_type="video/mp4",
+                score=90.0,
+                evidence={"accepted": True, "quality_tier": "fallback", "score": 90.0},
+                quality_tier="fallback",
+            )
+            downloader = FakeDownloader(os.path.join(temp_dir, "new.mp4"))
+            service = LidaClipsService(
+                index=index,
+                lidarr_client=FakeLidarr([target]),
+                candidate_search=FakeSearch(
+                    [Candidate(video_id="fallback-low", title="Bright Lights", webpage_url="https://example.test/low")]
+                ),
+                scorer=FakeScorer(),
+                downloader=downloader,
+            )
+
+            summary = service.sync_once()
+
+            self.assertEqual(summary["upgrade_targets"], 1)
+            self.assertEqual(summary["no_upgrade"], 1)
+            self.assertEqual(summary["upgraded"], 0)
+            self.assertEqual(downloader.downloads, [])
+            self.assertEqual(index.get_clip_by_track(42)["video_id"], "fallback-old")
+
+    def test_sync_once_skips_existing_official_clip(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index = ClipIndex(":memory:")
+            target = self.make_target()
+            index.upsert_track(target)
+            index.record_clip(
+                lidarr_track_id=42,
+                video_id="official-old",
+                source_url="https://example.test/old",
+                title="Bright Lights (Official Music Video)",
+                file_path=os.path.join(temp_dir, "old.mp4"),
+                mime_type="video/mp4",
+                score=95.0,
+                evidence={"accepted": True, "quality_tier": "official", "score": 95.0},
+                quality_tier="official",
+            )
+            downloader = FakeDownloader(os.path.join(temp_dir, "new.mp4"))
+            service = LidaClipsService(
+                index=index,
+                lidarr_client=FakeLidarr([target]),
+                candidate_search=FakeSearch(
+                    [Candidate(video_id="official-new", title="Bright Lights", webpage_url="https://example.test/new")]
+                ),
+                scorer=FakeScorer(),
+                downloader=downloader,
+            )
+
+            summary = service.sync_once()
+
+            self.assertEqual(summary["processed"], 0)
+            self.assertEqual(summary["upgrade_targets"], 0)
+            self.assertEqual(downloader.downloads, [])
 
     def test_sync_once_respects_artist_allowlist_and_target_limit(self):
         with tempfile.TemporaryDirectory() as temp_dir:

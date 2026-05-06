@@ -2,7 +2,7 @@
 
 LidaClips is a GPL-3.0 public fork of [TheWicklowWolf/LidaTube](https://github.com/TheWicklowWolf/LidaTube). It builds a local music-video clip index for tracks that already exist in a Lidarr-managed music library.
 
-LidaTube downloads missing songs as audio. LidaClips does the parallel job for video clips: it looks at the songs you already have, finds strict official music-video candidates, downloads the selected clip with `yt-dlp`, and exposes a small API that music clients can use for a video tab.
+LidaTube downloads missing songs as audio. LidaClips does the parallel job for video clips: it looks at the songs you already have, downloads the best safe clip it can find, upgrades fallback matches when better official clips appear, and exposes a small API that music clients can use for a video tab.
 
 > Status: early public fork. The backend, API, Docker runtime, UI shell, and tests are in place. Validate with a small artist subset before running it against a full library.
 
@@ -12,7 +12,7 @@ LidaTube downloads missing songs as audio. LidaClips does the parallel job for v
 - Creates one clip target per existing track.
 - Optionally verifies that the track is also playable through Navidrome/OpenSubsonic.
 - Searches YouTube through `yt-dlp`.
-- Scores candidates automatically and prefers official music videos.
+- Scores candidates automatically, prefers official music videos, and can keep a safe fallback until a better clip is found.
 - Downloads to local staging first, then moves completed files into the configured output.
 - Names clips after the matching audio file basename, for example `08 - In the End.flac` becomes `08 - In the End.mp4`.
 - Stores durable state in SQLite at `/lidaclips/config/lidaclips.db`.
@@ -23,7 +23,7 @@ LidaTube downloads missing songs as audio. LidaClips does the parallel job for v
 - It does not fill missing Lidarr audio files.
 - It does not modify Navidrome.
 - It does not require a manual review queue by default.
-- It does not accept low-confidence matches just because a video is popular.
+- It does not accept unsafe matches just because a video is popular.
 
 ## Storage Model
 
@@ -75,6 +75,8 @@ clip_output_mode=clips_lane
 clip_output_path=/lidaclips/clips
 staging_path=/lidaclips/staging
 minimum_clip_score=75
+minimum_fallback_score=60
+upgrade_min_score_delta=10
 max_resolution=1080
 preferred_container=mp4
 youtube_po_provider=off
@@ -121,7 +123,9 @@ Environment variables override `config/settings_config.json`.
 | `clip_output_mode` | `clips_lane` | `clips_lane` or `sidecar`. |
 | `clip_output_path` | `/lidaclips/clips` | Root folder for `clips_lane` output. |
 | `staging_path` | `/lidaclips/staging` | Local staging folder for partial downloads. |
-| `minimum_clip_score` | `75` | Minimum automated match score. |
+| `minimum_clip_score` | `75` | Minimum score for official-tier matches. |
+| `minimum_fallback_score` | `60` | Minimum score for safe fallback clips when no official-tier candidate is found. |
+| `upgrade_min_score_delta` | `10` | Minimum same-tier score improvement required to replace an existing fallback clip. |
 | `max_resolution` | `1080` | Maximum video height passed to `yt-dlp`. |
 | `preferred_container` | `mp4` | Final merged container. |
 | `search_limit` | `10` | Number of YouTube candidates to inspect per track. |
@@ -161,11 +165,13 @@ OpenSubsonic-style video compatibility endpoints:
 
 `/api/v1/health` checks the SQLite DB, staging path, clips path, Lidarr, and optional Navidrome. It is API-key protected. The OpenSubsonic-style endpoints return familiar video-shaped responses, but authentication is still the LidaClips API key rather than full Subsonic token auth.
 
-Custom clip responses include `file_name`, which is the resolved clip filename without the full server path.
+Custom clip responses include `file_name`, which is the resolved clip filename without the full server path. They also include `quality_tier` for diagnostics; clients can ignore it and play fallback clips through the same stream path.
 
 ## Matching Policy
 
-The default scorer is deliberately strict. It rejects topic/audio uploads, lyric videos, visualizers, covers, live versions, remixes, shorts, interviews, and low-confidence matches.
+The default scorer separates candidates into `official`, `fallback`, and `rejected` tiers. Official matches are preferred, but a safe fallback can be downloaded now and replaced later when an official or materially better fallback clip appears.
+
+The scorer rejects topic/audio uploads, lyric videos, visualizers, covers, live versions, remixes, shorts, interviews, and unsafe low-confidence matches.
 
 Candidate scoring uses:
 
@@ -178,7 +184,7 @@ Candidate scoring uses:
 - artist-channel and VEVO-style channel signals
 - negative keywords and source penalties
 
-If no candidate passes the configured threshold, the target is recorded as `no_match` and can be retried by later scheduled runs.
+If no candidate passes the fallback floor, the target is recorded as `no_match` and can be retried by later scheduled runs. Existing fallback clips are upgrade targets; existing official clips are skipped.
 
 ## Oracle Deployment Notes
 

@@ -61,7 +61,7 @@ class Runtime:
         try:
             self.targets_status = "busy"
             self._emit_state()
-            targets = self.service.lidarr_client.collect_pending_tracks(self.index)
+            targets = self.service.collect_planned_targets()
             self.last_targets = [
                 {
                     "lidarr_track_id": target.lidarr_track_id,
@@ -124,6 +124,8 @@ class Runtime:
             "clip_output_mode": self.settings.clip_output_mode,
             "clip_output_path": self.settings.clip_output_path,
             "minimum_clip_score": self.settings.minimum_clip_score,
+            "minimum_fallback_score": self.settings.minimum_fallback_score,
+            "upgrade_min_score_delta": self.settings.upgrade_min_score_delta,
             "max_resolution": self.settings.max_resolution,
             "preferred_container": self.settings.preferred_container,
             "sync_schedule": self.settings.sync_schedule,
@@ -160,7 +162,7 @@ def build_runtime(config_folder: str = "config") -> Runtime:
             youtube_po_provider_url=settings.youtube_po_provider_url,
             youtube_player_clients=settings.youtube_player_clients,
         ),
-        scorer=ClipScorer(settings.minimum_clip_score),
+        scorer=ClipScorer(settings.minimum_clip_score, minimum_fallback_score=settings.minimum_fallback_score),
         downloader=ClipDownloader(
             storage=storage,
             preferred_container=settings.preferred_container,
@@ -176,5 +178,6 @@ def build_runtime(config_folder: str = "config") -> Runtime:
         sync_artist_allowlist=settings.sync_artist_allowlist,
         max_targets_per_run=settings.max_targets_per_run,
         download_enabled=settings.download_enabled,
+        upgrade_min_score_delta=settings.upgrade_min_score_delta,
     )
     return Runtime(settings, index, service)
