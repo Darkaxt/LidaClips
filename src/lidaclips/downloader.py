@@ -1,5 +1,6 @@
 import glob
 import os
+import shutil
 from typing import Callable
 
 from .models import ClipTarget
@@ -15,12 +16,14 @@ class ClipDownloader:
         max_resolution: int = 1080,
         cookies_path: str | None = None,
         ytdlp_factory: Callable | None = None,
+        js_runtime_path: str | None = None,
     ):
         self.storage = storage
         self.preferred_container = preferred_container.lstrip(".")
         self.max_resolution = int(max_resolution)
         self.cookies_path = cookies_path
         self.ytdlp_factory = ytdlp_factory
+        self.js_runtime_path = js_runtime_path if js_runtime_path is not None else shutil.which("node")
 
     def download(self, target: ClipTarget, candidate: Candidate) -> dict[str, str]:
         staged_template = self.storage.staging_file(candidate.video_id, f".%(ext)s")
@@ -34,6 +37,8 @@ class ClipDownloader:
         }
         if self.cookies_path:
             options["cookiefile"] = self.cookies_path
+        if self.js_runtime_path:
+            options["js_runtimes"] = {"node": {"path": self.js_runtime_path}}
         with self._factory()(options) as ydl:
             ydl.download([candidate.webpage_url])
 

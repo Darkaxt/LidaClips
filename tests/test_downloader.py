@@ -72,6 +72,40 @@ class DownloaderTests(unittest.TestCase):
             with open(result["file_path"], "rb") as handle:
                 self.assertEqual(handle.read(), b"video")
 
+    def test_download_enables_configured_node_runtime(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            created = []
+
+            def factory(options):
+                instance = FakeYtDlp(options)
+                created.append(instance)
+                return instance
+
+            target = ClipTarget(
+                lidarr_track_id=42,
+                artist_id=1,
+                album_id=10,
+                artist="The Example Band",
+                album="Neon Nights",
+                album_year=2020,
+                title="Bright Lights",
+                track_number="1",
+                absolute_track_number=1,
+                duration=240,
+                source_file_path="/music/song.flac",
+            )
+            candidate = Candidate(video_id="abc123", title="Official", webpage_url="https://www.youtube.com/watch?v=abc123")
+            storage = ClipStorage(
+                output_mode="clips_lane",
+                output_path=os.path.join(temp_dir, "clips"),
+                staging_path=os.path.join(temp_dir, "staging"),
+            )
+            downloader = ClipDownloader(storage=storage, ytdlp_factory=factory, js_runtime_path="/usr/bin/node")
+
+            downloader.download(target, candidate)
+
+            self.assertEqual(created[0].options["js_runtimes"], {"node": {"path": "/usr/bin/node"}})
+
 
 if __name__ == "__main__":
     unittest.main()
