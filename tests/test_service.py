@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from unittest.mock import Mock
 
 from lidaclips.index import ClipIndex
 from lidaclips.models import ClipTarget
@@ -24,6 +25,19 @@ class FakeSearch:
 
     def search(self, target):
         return self.candidates
+
+
+class FailingThenSuccessfulSearch:
+    def search(self, target):
+        if target.lidarr_track_id == 42:
+            raise RuntimeError("youtube bot challenge")
+        return [
+            Candidate(
+                video_id="accepted",
+                title=f"{target.artist} - {target.title} (Official Music Video)",
+                webpage_url="https://example.test/accepted",
+            )
+        ]
 
 
 class FakeDownloader:
@@ -235,6 +249,29 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(downloader.downloads, [])
         self.assertFalse(index.has_completed_clip(42))
         self.assertEqual(index.get_failure(42)["reason"], "download_disabled")
+
+    def test_sync_once_records_candidate_search_errors_and_continues(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index = ClipIndex(":memory:")
+            downloader = FakeDownloader(os.path.join(temp_dir, "clip.mp4"))
+            service = LidaClipsService(
+                index=index,
+                lidarr_client=FakeLidarr([self.make_target(), self.make_other_target()]),
+                candidate_search=FailingThenSuccessfulSearch(),
+                scorer=FakeScorer(),
+                downloader=downloader,
+                logger=Mock(),
+            )
+
+            summary = service.sync_once()
+
+            self.assertEqual(summary["processed"], 2)
+            self.assertEqual(summary["search_errors"], 1)
+            self.assertEqual(summary["downloaded"], 1)
+            self.assertEqual(len(downloader.downloads), 1)
+            self.assertEqual(downloader.downloads[0][0].lidarr_track_id, 43)
+            self.assertFalse(index.has_completed_clip(42))
+            self.assertTrue(index.get_failure(42)["reason"].startswith("candidate_search_error: "))
 
 
 if __name__ == "__main__":

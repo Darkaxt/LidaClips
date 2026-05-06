@@ -44,6 +44,7 @@ class LidaClipsService:
             "limited": 0,
             "processed": 0,
             "download_disabled": 0,
+            "search_errors": 0,
         }
         targets = self.lidarr_client.collect_pending_tracks(self.index)
         summary["targets"] = len(targets)
@@ -58,7 +59,14 @@ class LidaClipsService:
                     continue
                 self.index.upsert_track(target, navidrome_song_id=song_id)
 
-            candidates = self.candidate_search.search(target)
+            try:
+                candidates = self.candidate_search.search(target)
+            except Exception as exc:
+                self.logger.exception("Candidate search failed for %s - %s", target.artist, target.title)
+                self.index.record_no_match(target.lidarr_track_id, f"candidate_search_error: {exc}")
+                summary["search_errors"] += 1
+                continue
+
             best_candidate = None
             best_decision = None
             for candidate in candidates:
