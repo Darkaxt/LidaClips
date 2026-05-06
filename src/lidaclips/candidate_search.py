@@ -68,7 +68,7 @@ class YtDlpCandidateSearch:
         if self.youtube_po_provider != "bgutil_http":
             return None
         return {
-            "youtube": {"player_client": [",".join(self.youtube_player_clients)]},
+            "youtube": {"player_client": list(self.youtube_player_clients)},
             "youtubepot-bgutilhttp": {"base_url": [self.youtube_po_provider_url]},
         }
 

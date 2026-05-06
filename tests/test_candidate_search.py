@@ -124,7 +124,7 @@ class CandidateSearchTests(unittest.TestCase):
         self.assertEqual(
             created[0].options["extractor_args"],
             {
-                "youtube": {"player_client": ["mweb,default"]},
+                "youtube": {"player_client": ["mweb", "default"]},
                 "youtubepot-bgutilhttp": {"base_url": ["http://lidaclips-pot:4416"]},
             },
         )
