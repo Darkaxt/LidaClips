@@ -27,6 +27,15 @@ class FakeYtDlp:
             handle.write(b"video")
 
 
+class FailingYtDlp(FakeYtDlp):
+    def download(self, urls):
+        self.downloaded.extend(urls)
+        output_path = self.options["outtmpl"].replace("%(ext)s", "mp4")
+        with open(f"{output_path}.part", "wb") as handle:
+            handle.write(b"partial")
+        raise RuntimeError("HTTP Error 403: Forbidden")
+
+
 class DownloaderTests(unittest.TestCase):
     def test_download_uses_video_format_and_finalizes_to_storage(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -105,6 +114,43 @@ class DownloaderTests(unittest.TestCase):
             downloader.download(target, candidate)
 
             self.assertEqual(created[0].options["js_runtimes"], {"node": {"path": "/usr/bin/node"}})
+
+    def test_download_falls_back_to_hls_when_primary_format_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            created = []
+
+            def factory(options):
+                instance = FailingYtDlp(options) if not created else FakeYtDlp(options)
+                created.append(instance)
+                return instance
+
+            target = ClipTarget(
+                lidarr_track_id=42,
+                artist_id=1,
+                album_id=10,
+                artist="The Example Band",
+                album="Neon Nights",
+                album_year=2020,
+                title="Bright Lights",
+                track_number="1",
+                absolute_track_number=1,
+                duration=240,
+                source_file_path="/music/song.flac",
+            )
+            candidate = Candidate(video_id="abc123", title="Official", webpage_url="https://www.youtube.com/watch?v=abc123")
+            storage = ClipStorage(
+                output_mode="clips_lane",
+                output_path=os.path.join(temp_dir, "clips"),
+                staging_path=os.path.join(temp_dir, "staging"),
+            )
+            downloader = ClipDownloader(storage=storage, ytdlp_factory=factory, max_resolution=720)
+
+            result = downloader.download(target, candidate)
+
+            self.assertEqual(len(created), 2)
+            self.assertIn("bv*[height<=720]+ba", created[0].options["format"])
+            self.assertIn("protocol*=m3u8", created[1].options["format"])
+            self.assertTrue(os.path.exists(result["file_path"]))
 
 
 if __name__ == "__main__":
