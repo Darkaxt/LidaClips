@@ -3,7 +3,7 @@ FROM python:3.12-alpine
 ARG RELEASE_VERSION
 ENV RELEASE_VERSION=${RELEASE_VERSION}
 
-RUN apk update && apk add --no-cache ffmpeg su-exec
+RUN apk update && apk add --no-cache ffmpeg nodejs su-exec
 
 COPY . /lidaclips
 WORKDIR /lidaclips
