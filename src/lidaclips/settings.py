@@ -5,6 +5,9 @@ from dataclasses import asdict, dataclass
 from typing import Mapping
 
 
+EMPTY_ENV_OVERRIDES = {"sync_schedule", "sync_artist_allowlist"}
+
+
 @dataclass
 class Settings:
     lidarr_address: str = "http://192.168.1.2:8686"
@@ -34,6 +37,7 @@ class Settings:
     youtube_po_provider_url: str = "http://lidaclips-pot:4416"
     youtube_player_clients: list[str] = None
     youtube_enable_hls_fallback: bool = True
+    socketio_allowed_origins: list[str] = None
 
     def __post_init__(self):
         if self.sync_schedule is None:
@@ -42,6 +46,8 @@ class Settings:
             self.sync_artist_allowlist = []
         if self.youtube_player_clients is None:
             self.youtube_player_clients = ["mweb", "default"]
+        if self.socketio_allowed_origins is None:
+            self.socketio_allowed_origins = []
 
     @classmethod
     def load(cls, config_folder: str = "config", environ: Mapping[str, str] | None = None) -> "Settings":
@@ -58,15 +64,16 @@ class Settings:
                     data[key] = value
 
         for key in list(data):
-            if key in environ and environ[key] != "":
+            if key in environ and (environ[key] != "" or key in EMPTY_ENV_OVERRIDES):
                 data[key] = cls._coerce_value(key, environ[key])
             upper_key = key.upper()
-            if upper_key in environ and environ[upper_key] != "":
+            if upper_key in environ and (environ[upper_key] != "" or key in EMPTY_ENV_OVERRIDES):
                 data[key] = cls._coerce_value(key, environ[upper_key])
 
         data["sync_schedule"] = cls.parse_sync_schedule(data.get("sync_schedule", []))
         data["sync_artist_allowlist"] = cls.parse_csv_list(data.get("sync_artist_allowlist", []))
         data["youtube_player_clients"] = cls.parse_csv_list(data.get("youtube_player_clients", ["mweb", "default"]))
+        data["socketio_allowed_origins"] = cls.parse_csv_list(data.get("socketio_allowed_origins", []))
         if not data["youtube_player_clients"]:
             data["youtube_player_clients"] = ["mweb", "default"]
         data["thread_limit"] = int(data["thread_limit"])
@@ -127,7 +134,7 @@ class Settings:
     def _coerce_value(key: str, value: str):
         if key == "sync_schedule":
             return Settings.parse_sync_schedule(value)
-        if key in {"sync_artist_allowlist", "youtube_player_clients"}:
+        if key in {"sync_artist_allowlist", "youtube_player_clients", "socketio_allowed_origins"}:
             return Settings.parse_csv_list(value)
         if key in {"thread_limit", "max_resolution", "search_limit", "max_targets_per_run"}:
             return int(value)

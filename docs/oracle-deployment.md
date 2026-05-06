@@ -91,6 +91,7 @@ youtube_po_provider=bgutil_http
 youtube_po_provider_url=http://lidaclips-pot:4416
 youtube_player_clients=mweb,default
 youtube_enable_hls_fallback=true
+socketio_allowed_origins=https://clips.remaxku.eu
 sync_schedule=
 sync_artist_allowlist=Linkin Park
 max_targets_per_run=5

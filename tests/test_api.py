@@ -94,6 +94,20 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(track_response.status_code, 200)
         self.assertEqual(track_response.get_json()["clip"]["video_id"], "abc123")
 
+    def test_dashboard_requires_api_key_and_returns_public_clip_payload(self):
+        unauthorized = self.client.get("/api/v1/dashboard")
+        self.assertEqual(unauthorized.status_code, 401)
+
+        response = self.client.get("/api/v1/dashboard", headers=self.headers())
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["active_clips"], 1)
+        self.assertEqual(payload["official_clips"], 1)
+        self.assertEqual(payload["fallback_clips"], 0)
+        self.assertEqual(payload["recent_clips"][0]["file_name"], "clip.mp4")
+        self.assertNotIn("file_path", payload["recent_clips"][0])
+
     def test_navidrome_lookup_returns_clip(self):
         response = self.client.get("/api/v1/navidrome/nav-song-42/clip", headers=self.headers())
 

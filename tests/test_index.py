@@ -140,6 +140,62 @@ class IndexMigrationTests(unittest.TestCase):
         self.assertIsNone(index.get_clip_by_id(old_id))
         self.assertEqual(index.get_clip_by_id(old_id, include_replaced=True)["status"], "replaced")
 
+    def test_dashboard_summary_counts_active_clips_and_recent_failures(self):
+        index = ClipIndex(":memory:")
+        official_target = self.make_target(lidarr_track_id=42, title="Bright Lights")
+        fallback_target = self.make_target(lidarr_track_id=43, title="City Glow")
+        failed_target = self.make_target(lidarr_track_id=44, title="Static")
+        index.upsert_track(official_target)
+        index.upsert_track(fallback_target)
+        index.upsert_track(failed_target)
+        index.record_clip(
+            lidarr_track_id=42,
+            video_id="official-new",
+            source_url="https://example.test/new",
+            title="New",
+            file_path="/clips/new.mp4",
+            mime_type="video/mp4",
+            score=95.0,
+            evidence={"quality_tier": "official", "reasons": ["official"]},
+            quality_tier="official",
+        )
+        old_id = index.record_clip(
+            lidarr_track_id=43,
+            video_id="fallback-old",
+            source_url="https://example.test/old",
+            title="Old",
+            file_path="/clips/old.mp4",
+            mime_type="video/mp4",
+            score=70.0,
+            evidence={"quality_tier": "fallback"},
+            quality_tier="fallback",
+        )
+        new_id = index.record_clip(
+            lidarr_track_id=43,
+            video_id="fallback-new",
+            source_url="https://example.test/fallback",
+            title="Fallback",
+            file_path="/clips/fallback.mp4",
+            mime_type="video/mp4",
+            score=82.0,
+            evidence={"quality_tier": "fallback"},
+            quality_tier="fallback",
+        )
+        index.mark_clip_replaced(old_id, new_id)
+        index.record_no_match(44, "no_match")
+
+        summary = index.dashboard_summary()
+
+        self.assertEqual(summary["tracked_tracks"], 3)
+        self.assertEqual(summary["active_clips"], 2)
+        self.assertEqual(summary["official_clips"], 1)
+        self.assertEqual(summary["fallback_clips"], 1)
+        self.assertEqual(summary["replaced_clips"], 1)
+        self.assertEqual(summary["failures"], 1)
+        self.assertEqual(summary["no_match"], 1)
+        self.assertEqual(summary["recent_failures"][0]["track_title"], "Static")
+        self.assertEqual({clip["id"] for clip in summary["recent_clips"]}, {1, new_id})
+
 
 if __name__ == "__main__":
     unittest.main()

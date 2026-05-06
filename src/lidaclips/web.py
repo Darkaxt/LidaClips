@@ -50,7 +50,12 @@ def create_app(index: ClipIndex, api_key: str = "", service: Any | None = None) 
             album=request.args.get("album"),
             track=request.args.get("track") or request.args.get("title"),
         )
-        return jsonify({"clips": [_public_clip(row) for row in rows]})
+        return jsonify({"clips": [public_clip(row) for row in rows]})
+
+    @app.get("/api/v1/dashboard")
+    @require_api_key
+    def dashboard():
+        return jsonify(public_dashboard(index.dashboard_summary()))
 
     @app.get("/api/v1/tracks/<int:lidarr_track_id>/clip")
     @require_api_key
@@ -58,7 +63,7 @@ def create_app(index: ClipIndex, api_key: str = "", service: Any | None = None) 
         row = index.get_clip_by_track(lidarr_track_id)
         if row is None:
             return jsonify({"error": "clip_not_found"}), 404
-        return jsonify({"clip": _public_clip(row)})
+        return jsonify({"clip": public_clip(row)})
 
     @app.get("/api/v1/navidrome/<path:song_id>/clip")
     @require_api_key
@@ -66,7 +71,7 @@ def create_app(index: ClipIndex, api_key: str = "", service: Any | None = None) 
         row = index.get_clip_by_navidrome_song_id(song_id)
         if row is None:
             return jsonify({"error": "clip_not_found"}), 404
-        return jsonify({"clip": _public_clip(row)})
+        return jsonify({"clip": public_clip(row)})
 
     @app.get("/api/v1/stream/<int:clip_id>")
     @require_api_key
@@ -113,7 +118,25 @@ def create_app(index: ClipIndex, api_key: str = "", service: Any | None = None) 
     return app
 
 
-def _public_clip(row: dict[str, Any]) -> dict[str, Any]:
+def public_dashboard(summary: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(summary)
+    payload["recent_clips"] = [public_clip(row) for row in summary.get("recent_clips", [])]
+    payload["recent_failures"] = [
+        {
+            "lidarr_track_id": row.get("lidarr_track_id"),
+            "artist": row.get("artist"),
+            "album": row.get("album"),
+            "track": row.get("track_title"),
+            "reason": row.get("reason"),
+            "retry_after": row.get("retry_after"),
+            "updated_at": row.get("updated_at"),
+        }
+        for row in summary.get("recent_failures", [])
+    ]
+    return payload
+
+
+def public_clip(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": row["id"],
         "lidarr_track_id": row["lidarr_track_id"],

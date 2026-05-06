@@ -15,7 +15,7 @@ from .scoring import ClipScorer
 from .service import LidaClipsService
 from .settings import Settings
 from .storage import ClipStorage
-from .web import create_app
+from .web import create_app, public_dashboard
 
 
 class Runtime:
@@ -25,7 +25,11 @@ class Runtime:
         self.service = service
         self.logger = logging.getLogger(__name__)
         self.app = create_app(index, api_key=settings.api_key, service=service)
-        self.socketio = SocketIO(self.app, async_mode="threading")
+        self.socketio = SocketIO(
+            self.app,
+            async_mode="threading",
+            cors_allowed_origins=settings.socketio_allowed_origins or None,
+        )
         self.targets_status = "idle"
         self.sync_status = "idle"
         self.last_targets = []
@@ -48,6 +52,10 @@ class Runtime:
         @self.socketio.on("load_settings")
         def load_settings():
             self.socketio.emit("settings_loaded", self._settings_payload())
+
+        @self.socketio.on("load_dashboard")
+        def load_dashboard():
+            self.socketio.emit("dashboard_loaded", self._dashboard_payload())
 
         @self.socketio.on("refresh_targets")
         def refresh_targets():
@@ -114,8 +122,12 @@ class Runtime:
                 "sync_status": self.sync_status,
                 "targets": self.last_targets,
                 "summary": self.last_summary,
+                "dashboard": self._dashboard_payload(),
             },
         )
+
+    def _dashboard_payload(self):
+        return public_dashboard(self.index.dashboard_summary())
 
     def _settings_payload(self):
         return {
@@ -136,6 +148,7 @@ class Runtime:
             "youtube_po_provider_url": self.settings.youtube_po_provider_url,
             "youtube_player_clients": self.settings.youtube_player_clients,
             "youtube_enable_hls_fallback": self.settings.youtube_enable_hls_fallback,
+            "socketio_allowed_origins": self.settings.socketio_allowed_origins,
         }
 
 

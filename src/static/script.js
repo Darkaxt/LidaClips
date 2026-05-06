@@ -22,6 +22,16 @@ const summaryDownloaded = document.getElementById("summary-downloaded");
 const summaryNoMatch = document.getElementById("summary-no-match");
 const summaryErrors = document.getElementById("summary-errors");
 
+const dashboardActiveClips = document.getElementById("dashboard-active-clips");
+const dashboardOfficialClips = document.getElementById("dashboard-official-clips");
+const dashboardFallbackClips = document.getElementById("dashboard-fallback-clips");
+const dashboardFailures = document.getElementById("dashboard-failures");
+const dashboardRollout = document.getElementById("dashboard-rollout");
+const dashboardLastUpdated = document.getElementById("dashboard-last-updated");
+const dashboardTrackedTracks = document.getElementById("dashboard-tracked-tracks");
+const recentClipsTable = document.getElementById("recent-clips-table").getElementsByTagName("tbody")[0];
+const recentFailuresList = document.getElementById("recent-failures-list");
+
 const socket = io();
 
 function setProgressState(progressBar, status) {
@@ -50,6 +60,80 @@ function formatDuration(seconds) {
     return `${minutes}:${remainder}`;
 }
 
+function formatScore(score) {
+    if (score === null || score === undefined || score === "") {
+        return "";
+    }
+    return Number(score).toFixed(0);
+}
+
+function tierLabel(tier) {
+    if (tier === "official") {
+        return "Official";
+    }
+    if (tier === "fallback") {
+        return "Fallback";
+    }
+    return tier || "Unknown";
+}
+
+function renderDashboard(dashboard) {
+    if (!dashboard) {
+        return;
+    }
+    dashboardActiveClips.textContent = dashboard.active_clips || 0;
+    dashboardOfficialClips.textContent = dashboard.official_clips || 0;
+    dashboardFallbackClips.textContent = dashboard.fallback_clips || 0;
+    dashboardFailures.textContent = dashboard.failures || 0;
+    dashboardTrackedTracks.textContent = `${dashboard.tracked_tracks || 0} tracks known`;
+    dashboardLastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+
+    recentClipsTable.innerHTML = "";
+    const clips = dashboard.recent_clips || [];
+    if (!clips.length) {
+        const row = recentClipsTable.insertRow();
+        row.classList.add("empty-row");
+        const cell = row.insertCell(0);
+        cell.colSpan = 5;
+        cell.textContent = "No clips have been indexed yet.";
+    } else {
+        clips.forEach((clip) => {
+            const row = recentClipsTable.insertRow();
+            row.insertCell(0).textContent = `${clip.artist} - ${clip.track}`;
+            row.insertCell(1).textContent = clip.album || "";
+            const tierCell = row.insertCell(2);
+            tierCell.textContent = tierLabel(clip.quality_tier);
+            tierCell.classList.add("text-center", `tier-${clip.quality_tier || "unknown"}`);
+            const scoreCell = row.insertCell(3);
+            scoreCell.textContent = formatScore(clip.score);
+            scoreCell.classList.add("text-center");
+            row.insertCell(4).textContent = clip.file_name || "";
+        });
+    }
+
+    recentFailuresList.innerHTML = "";
+    const failures = dashboard.recent_failures || [];
+    if (!failures.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty-state";
+        empty.textContent = "No recent failures.";
+        recentFailuresList.appendChild(empty);
+    } else {
+        failures.forEach((failure) => {
+            const item = document.createElement("div");
+            item.className = "issue-item";
+            const title = document.createElement("strong");
+            title.textContent = failure.track ? `${failure.artist || "Unknown"} - ${failure.track}` : `Track ${failure.lidarr_track_id}`;
+            const reason = document.createElement("span");
+            reason.textContent = failure.reason || "unknown";
+            const time = document.createElement("small");
+            time.textContent = failure.updated_at || "";
+            item.append(title, reason, time);
+            recentFailuresList.appendChild(item);
+        });
+    }
+}
+
 refreshTargetsButton.addEventListener("click", () => {
     socket.emit("refresh_targets");
 });
@@ -71,6 +155,9 @@ socket.on("settings_loaded", (settings) => {
     syncArtistAllowlist.value = (settings.sync_artist_allowlist || []).join(", ");
     maxTargetsPerRun.value = settings.max_targets_per_run ?? "";
     downloadEnabled.value = settings.download_enabled ? "true" : "false";
+    const scope = (settings.sync_artist_allowlist || []).length ? "Allowlist" : "Global";
+    const state = settings.download_enabled ? "enabled" : "paused";
+    dashboardRollout.textContent = `${scope}, ${state}`;
 });
 
 socket.on("state_update", (state) => {
@@ -108,6 +195,12 @@ socket.on("state_update", (state) => {
         valueCell.textContent = value;
         valueCell.classList.add("text-center");
     });
+
+    renderDashboard(state.dashboard);
+});
+
+socket.on("dashboard_loaded", (dashboard) => {
+    renderDashboard(dashboard);
 });
 
 socket.on("new_toast_msg", (data) => {
@@ -150,3 +243,14 @@ themeSwitch.addEventListener("click", () => {
     localStorage.setItem("theme", document.documentElement.getAttribute("data-bs-theme"));
     localStorage.setItem("switchPosition", themeSwitch.checked);
 });
+
+socket.on("connect", () => {
+    socket.emit("load_settings");
+    socket.emit("load_dashboard");
+});
+
+setInterval(() => {
+    if (socket.connected) {
+        socket.emit("load_dashboard");
+    }
+}, 30000);

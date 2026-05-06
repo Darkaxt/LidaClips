@@ -83,6 +83,7 @@ youtube_po_provider=off
 youtube_po_provider_url=http://lidaclips-pot:4416
 youtube_player_clients=mweb,default
 youtube_enable_hls_fallback=true
+socketio_allowed_origins=
 sync_artist_allowlist=
 max_targets_per_run=25
 download_enabled=false
@@ -133,6 +134,7 @@ Environment variables override `config/settings_config.json`.
 | `youtube_po_provider_url` | `http://lidaclips-pot:4416` | Internal bgutil provider URL when PO-token support is enabled. |
 | `youtube_player_clients` | `mweb,default` | Comma-separated YouTube clients used for the primary DASH attempt. |
 | `youtube_enable_hls_fallback` | `true` | Keep the HLS retry path enabled after a primary DASH failure. |
+| `socketio_allowed_origins` | empty | Optional comma-separated UI origins for reverse-proxy deployments, for example `https://clips.example.com`. |
 | `api_key` | empty | Optional API key for clip lookup and stream endpoints. |
 | `ytdlp_binary` | empty | Optional local `yt-dlp` binary path for non-container runs. |
 
@@ -152,6 +154,7 @@ Custom clip API:
 
 - `GET /api/v1/ping`
 - `GET /api/v1/health`
+- `GET /api/v1/dashboard`
 - `GET /api/v1/clips?artist=&album=&track=`
 - `GET /api/v1/tracks/{lidarr_track_id}/clip`
 - `GET /api/v1/navidrome/{song_id}/clip`

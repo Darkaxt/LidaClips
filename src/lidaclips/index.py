@@ -327,6 +327,75 @@ class ClipIndex:
     def all_clips(self, limit: int = 1000) -> list[dict[str, Any]]:
         return self.search_clips(limit=limit)
 
+    def dashboard_summary(self, recent_limit: int = 12) -> dict[str, Any]:
+        active_by_tier = {
+            row["quality_tier"]: int(row["count"])
+            for row in self.connection.execute(
+                """
+                SELECT quality_tier, COUNT(*) AS count
+                FROM clips
+                WHERE status = 'completed'
+                GROUP BY quality_tier
+                """
+            ).fetchall()
+        }
+        status_by_name = {
+            row["status"]: int(row["count"])
+            for row in self.connection.execute(
+                """
+                SELECT status, COUNT(*) AS count
+                FROM clips
+                GROUP BY status
+                """
+            ).fetchall()
+        }
+        failure_by_reason = {
+            row["reason"]: int(row["count"])
+            for row in self.connection.execute(
+                """
+                SELECT reason, COUNT(*) AS count
+                FROM failures
+                GROUP BY reason
+                """
+            ).fetchall()
+        }
+        recent_clips = self.connection.execute(
+            """
+            SELECT clips.*, tracks.artist, tracks.album, tracks.album_year, tracks.title AS track_title,
+                   tracks.track_number, tracks.absolute_track_number, tracks.duration, tracks.source_file_path,
+                   tracks.navidrome_song_id
+            FROM clips
+            JOIN tracks ON tracks.lidarr_track_id = clips.lidarr_track_id
+            WHERE clips.status = 'completed'
+            ORDER BY clips.created_at DESC, clips.id DESC
+            LIMIT ?
+            """,
+            (recent_limit,),
+        ).fetchall()
+        recent_failures = self.connection.execute(
+            """
+            SELECT failures.lidarr_track_id, failures.reason, failures.retry_after, failures.updated_at,
+                   tracks.artist, tracks.album, tracks.title AS track_title
+            FROM failures
+            LEFT JOIN tracks ON tracks.lidarr_track_id = failures.lidarr_track_id
+            ORDER BY failures.updated_at DESC
+            LIMIT ?
+            """,
+            (recent_limit,),
+        ).fetchall()
+        active_clips = sum(active_by_tier.values())
+        return {
+            "tracked_tracks": self.connection.execute("SELECT COUNT(*) AS count FROM tracks").fetchone()["count"],
+            "active_clips": active_clips,
+            "official_clips": active_by_tier.get("official", 0),
+            "fallback_clips": active_by_tier.get("fallback", 0),
+            "replaced_clips": status_by_name.get("replaced", 0),
+            "failures": sum(failure_by_reason.values()),
+            "no_match": failure_by_reason.get("no_match", 0),
+            "recent_clips": [self._clip_row_to_dict(row) for row in recent_clips if row is not None],
+            "recent_failures": [dict(row) for row in recent_failures if row is not None],
+        }
+
     def path_conflicts(self, file_path: str, lidarr_track_id: int, exclude_clip_id: int | None = None) -> bool:
         conditions = [
             "file_path = ?",

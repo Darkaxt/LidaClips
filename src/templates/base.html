@@ -41,6 +41,73 @@
   </div>
 
   <div class="container-fluid mt-3 card-container">
+    <section class="dashboard-overview mb-3">
+      <div class="stat-tile">
+        <span>Active Clips</span>
+        <strong id="dashboard-active-clips">0</strong>
+      </div>
+      <div class="stat-tile">
+        <span>Official</span>
+        <strong id="dashboard-official-clips">0</strong>
+      </div>
+      <div class="stat-tile">
+        <span>Fallback</span>
+        <strong id="dashboard-fallback-clips">0</strong>
+      </div>
+      <div class="stat-tile">
+        <span>Failures</span>
+        <strong id="dashboard-failures">0</strong>
+      </div>
+      <div class="stat-tile">
+        <span>Rollout</span>
+        <strong id="dashboard-rollout">Loading</strong>
+      </div>
+    </section>
+
+    <div class="row g-3 mb-3">
+      <div class="col-lg-8 col-12">
+        <div class="card tool-card compact-card">
+          <div class="card-body">
+            <div class="section-heading">
+              <h2 class="panel-title mb-0">Recent Clips</h2>
+              <span id="dashboard-last-updated">Waiting for data</span>
+            </div>
+            <div class="table-responsive recent-table-wrap">
+              <table class="table table-striped align-middle mb-0" id="recent-clips-table">
+                <thead>
+                  <tr>
+                    <th>Track</th>
+                    <th>Album</th>
+                    <th class="text-center">Tier</th>
+                    <th class="text-center">Score</th>
+                    <th>File</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="empty-row">
+                    <td colspan="5">No clips have been indexed yet.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-4 col-12">
+        <div class="card tool-card compact-card">
+          <div class="card-body">
+            <div class="section-heading">
+              <h2 class="panel-title mb-0">Recent Issues</h2>
+              <span id="dashboard-tracked-tracks">0 tracks known</span>
+            </div>
+            <div class="issue-list" id="recent-failures-list">
+              <div class="empty-state">No recent failures.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="row cards-row g-3">
       <div class="col-md-6 col-12 mb-3">
         <div class="card tool-card h-100" id="targets-card">
