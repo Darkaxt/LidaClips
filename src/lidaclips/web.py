@@ -128,6 +128,7 @@ def _public_clip(row: dict[str, Any]) -> dict[str, Any]:
         "mime_type": row["mime_type"],
         "score": row["score"],
         "stream_url": row["stream_url"],
+        "file_name": os.path.basename(row["file_path"]),
         "evidence": row["evidence"],
     }
 

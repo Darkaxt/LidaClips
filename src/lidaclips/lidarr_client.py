@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Iterable
 
 import httpx
 
@@ -29,10 +29,17 @@ class LidarrClient:
         for album in self._get_albums():
             if album.get("statistics", {}).get("trackFileCount") == 0:
                 continue
-            for track in self._get_tracks(album["id"]):
-                if not track.get("hasFile", False):
-                    continue
-                targets.append(self._target_from(album, track))
+            present_tracks = [track for track in self._get_tracks(album["id"]) if track.get("hasFile", False)]
+            track_files = self._get_track_files(track.get("trackFileId") for track in present_tracks)
+            for track in present_tracks:
+                target = self._target_from(album, track, track_files.get(self._int_or_none(track.get("trackFileId"))))
+                if target.source_file_path is None:
+                    detailed_track = self._get_track(track["id"])
+                    merged_track = dict(track)
+                    merged_track.update(detailed_track)
+                    detailed_file = detailed_track.get("trackFile") or detailed_track.get("audioFile")
+                    target = self._target_from(album, merged_track, detailed_file)
+                targets.append(target)
         targets.sort(key=lambda item: (item.artist.lower(), item.album.lower(), item.absolute_track_number, item.title.lower()))
         return targets
 
@@ -49,6 +56,20 @@ class LidarrClient:
     def _get_tracks(self, album_id: int) -> list[dict[str, Any]]:
         return self._get("/api/v1/track", {"albumId": album_id})
 
+    def _get_track(self, track_id: int) -> dict[str, Any]:
+        return self._get(f"/api/v1/track/{track_id}")
+
+    def _get_track_files(self, track_file_ids: Iterable[Any]) -> dict[int, dict[str, Any]]:
+        ids = sorted({track_file_id for raw_id in track_file_ids if (track_file_id := self._int_or_none(raw_id))})
+        if not ids:
+            return {}
+        payload = self._get("/api/v1/trackfile", {"trackFileIds": ",".join(str(track_file_id) for track_file_id in ids)})
+        return {
+            int(item["id"]): item
+            for item in payload
+            if isinstance(item, dict) and self._int_or_none(item.get("id")) is not None
+        }
+
     def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         request_params = dict(params or {})
         request_params["apikey"] = self.api_key
@@ -57,9 +78,9 @@ class LidarrClient:
             raise LidarrError(f"Lidarr API error {response.status_code}: {response.text}")
         return response.json()
 
-    def _target_from(self, album: dict[str, Any], track: dict[str, Any]) -> ClipTarget:
+    def _target_from(self, album: dict[str, Any], track: dict[str, Any], track_file: dict[str, Any] | None = None) -> ClipTarget:
         artist = album.get("artist") or {}
-        audio_file = track.get("audioFile") or track.get("trackFile") or {}
+        audio_file = track_file or track.get("audioFile") or track.get("trackFile") or {}
         return ClipTarget(
             lidarr_track_id=int(track["id"]),
             artist_id=int(album.get("artistId") or artist.get("id") or 0),
@@ -84,3 +105,9 @@ class LidarrClient:
         if duration > 20_000:
             return int(duration / 1000)
         return duration
+
+    def _int_or_none(self, value: Any) -> int | None:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None

@@ -66,6 +66,48 @@ class FakeSession:
         raise AssertionError(f"unexpected URL {url}")
 
 
+class TrackFileSession:
+    def __init__(self, trackfile_payload=None, track_by_id_payload=None):
+        self.calls = []
+        self.trackfile_payload = trackfile_payload or []
+        self.track_by_id_payload = track_by_id_payload
+
+    def get(self, url, params=None, timeout=None):
+        self.calls.append((url, params or {}, timeout))
+        if url.endswith("/api/v1/album"):
+            return FakeResponse(
+                [
+                    {
+                        "id": 10,
+                        "artistId": 1,
+                        "title": "Neon Nights",
+                        "releaseDate": "2020-01-01T00:00:00Z",
+                        "artist": {"id": 1, "artistName": "The Example Band"},
+                    }
+                ]
+            )
+        if url.endswith("/api/v1/track"):
+            return FakeResponse(
+                [
+                    {
+                        "id": 42,
+                        "title": "Bright Lights",
+                        "trackNumber": "1",
+                        "absoluteTrackNumber": 1,
+                        "duration": 240,
+                        "hasFile": True,
+                        "trackFileId": 100,
+                    }
+                ]
+            )
+        if url.endswith("/api/v1/trackfile"):
+            self.trackfile_params = params or {}
+            return FakeResponse(self.trackfile_payload)
+        if url.endswith("/api/v1/track/42"):
+            return FakeResponse(self.track_by_id_payload)
+        raise AssertionError(f"unexpected URL {url}")
+
+
 class LidarrTargetTests(unittest.TestCase):
     def test_collects_only_tracks_that_already_have_files(self):
         client = LidarrClient("http://lidarr:8686", "key", session=FakeSession())
@@ -79,6 +121,40 @@ class LidarrTargetTests(unittest.TestCase):
         self.assertEqual(target.album, "Neon Nights")
         self.assertEqual(target.title, "Bright Lights")
         self.assertEqual(target.source_file_path, "/music/The Example Band/Neon Nights/01 - Bright Lights.flac")
+
+    def test_collects_source_file_path_from_trackfile_batch_lookup(self):
+        session = TrackFileSession(
+            trackfile_payload=[
+                {
+                    "id": 100,
+                    "path": "/data/music/The Example Band/Neon Nights/01 - Bright Lights.flac",
+                }
+            ]
+        )
+        client = LidarrClient("http://lidarr:8686", "key", session=session)
+
+        targets = client.collect_present_tracks()
+
+        self.assertEqual(targets[0].source_file_path, "/data/music/The Example Band/Neon Nights/01 - Bright Lights.flac")
+        self.assertEqual(session.trackfile_params["trackFileIds"], "100")
+
+    def test_collects_source_file_path_from_track_by_id_fallback(self):
+        session = TrackFileSession(
+            trackfile_payload=[],
+            track_by_id_payload={
+                "id": 42,
+                "trackFile": {
+                    "id": 100,
+                    "path": "/data/music/The Example Band/Neon Nights/01 - Bright Lights.flac",
+                },
+            },
+        )
+        client = LidarrClient("http://lidarr:8686", "key", session=session)
+
+        targets = client.collect_present_tracks()
+
+        self.assertEqual(targets[0].source_file_path, "/data/music/The Example Band/Neon Nights/01 - Bright Lights.flac")
+        self.assertTrue(any(call[0].endswith("/api/v1/track/42") for call in session.calls))
 
     def test_skips_tracks_with_completed_clip_in_index(self):
         client = LidarrClient("http://lidarr:8686", "key", session=FakeSession())

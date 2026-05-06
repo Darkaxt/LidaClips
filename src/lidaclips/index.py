@@ -228,7 +228,8 @@ class ClipIndex:
         row = self.connection.execute(
             """
             SELECT clips.*, tracks.artist, tracks.album, tracks.album_year, tracks.title AS track_title,
-                   tracks.track_number, tracks.absolute_track_number, tracks.duration, tracks.navidrome_song_id
+                   tracks.track_number, tracks.absolute_track_number, tracks.duration, tracks.source_file_path,
+                   tracks.navidrome_song_id
             FROM clips
             JOIN tracks ON tracks.lidarr_track_id = clips.lidarr_track_id
             WHERE clips.id = ? AND clips.status = 'completed'
@@ -241,7 +242,8 @@ class ClipIndex:
         row = self.connection.execute(
             """
             SELECT clips.*, tracks.artist, tracks.album, tracks.album_year, tracks.title AS track_title,
-                   tracks.track_number, tracks.absolute_track_number, tracks.duration, tracks.navidrome_song_id
+                   tracks.track_number, tracks.absolute_track_number, tracks.duration, tracks.source_file_path,
+                   tracks.navidrome_song_id
             FROM clips
             JOIN tracks ON tracks.lidarr_track_id = clips.lidarr_track_id
             WHERE clips.lidarr_track_id = ? AND clips.status = 'completed'
@@ -256,7 +258,8 @@ class ClipIndex:
         row = self.connection.execute(
             """
             SELECT clips.*, tracks.artist, tracks.album, tracks.album_year, tracks.title AS track_title,
-                   tracks.track_number, tracks.absolute_track_number, tracks.duration, tracks.navidrome_song_id
+                   tracks.track_number, tracks.absolute_track_number, tracks.duration, tracks.source_file_path,
+                   tracks.navidrome_song_id
             FROM clips
             JOIN tracks ON tracks.lidarr_track_id = clips.lidarr_track_id
             WHERE tracks.navidrome_song_id = ? AND clips.status = 'completed'
@@ -283,7 +286,8 @@ class ClipIndex:
         rows = self.connection.execute(
             f"""
             SELECT clips.*, tracks.artist, tracks.album, tracks.album_year, tracks.title AS track_title,
-                   tracks.track_number, tracks.absolute_track_number, tracks.duration, tracks.navidrome_song_id
+                   tracks.track_number, tracks.absolute_track_number, tracks.duration, tracks.source_file_path,
+                   tracks.navidrome_song_id
             FROM clips
             JOIN tracks ON tracks.lidarr_track_id = clips.lidarr_track_id
             WHERE {' AND '.join(conditions)}
@@ -296,6 +300,33 @@ class ClipIndex:
 
     def all_clips(self, limit: int = 1000) -> list[dict[str, Any]]:
         return self.search_clips(limit=limit)
+
+    def path_conflicts(self, file_path: str, lidarr_track_id: int, exclude_clip_id: int | None = None) -> bool:
+        conditions = [
+            "file_path = ?",
+            "status = 'completed'",
+            "lidarr_track_id != ?",
+        ]
+        params: list[Any] = [file_path, lidarr_track_id]
+        if exclude_clip_id is not None:
+            conditions.append("id != ?")
+            params.append(exclude_clip_id)
+        row = self.connection.execute(
+            f"SELECT 1 FROM clips WHERE {' AND '.join(conditions)} LIMIT 1",
+            params,
+        ).fetchone()
+        return row is not None
+
+    def update_clip_file_path(self, clip_id: int, file_path: str) -> None:
+        with self.connection:
+            self.connection.execute(
+                """
+                UPDATE clips
+                SET file_path = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (file_path, utc_now(), clip_id),
+            )
 
     def _clip_row_to_dict(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
         if row is None:

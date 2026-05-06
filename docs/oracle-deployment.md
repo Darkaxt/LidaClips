@@ -26,9 +26,18 @@ Keep staging on local disk so partial downloads and failed merges do not appear 
 
 ```yaml
 services:
+  lidaclips-pot:
+    image: brainicism/bgutil-ytdlp-pot-provider:1.3.1
+    container_name: lidaclips-pot
+    networks:
+      - aiostreams_default
+    restart: unless-stopped
+
   lidaclips:
     image: ghcr.io/darkaxt/lidaclips:latest
     container_name: lidaclips
+    depends_on:
+      - lidaclips-pot
     env_file:
       - .env
     volumes:
@@ -76,13 +85,19 @@ staging_path=/lidaclips/staging
 minimum_clip_score=80
 max_resolution=720
 preferred_container=mp4
+youtube_po_provider=bgutil_http
+youtube_po_provider_url=http://lidaclips-pot:4416
+youtube_player_clients=mweb,default
+youtube_enable_hls_fallback=true
 sync_schedule=
-sync_artist_allowlist=One Test Artist
-max_targets_per_run=10
+sync_artist_allowlist=Linkin Park
+max_targets_per_run=5
 download_enabled=false
 api_key=change-me-too
 CLIPS_BASIC_AUTH_HASH=change-me
 ```
+
+The `lidaclips-pot` service is internal-only. Do not add Traefik labels or host port publishing for it. LidaClips uses it only for the primary DASH attempt; HLS fallback remains enabled.
 
 ## Uptime Kuma
 

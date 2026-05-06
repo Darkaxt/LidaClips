@@ -30,7 +30,43 @@ class ClipStorageTests(unittest.TestCase):
 
             self.assertEqual(
                 final_path,
-                os.path.join(temp_dir, "The Example Band", "Neon Nights (2020)", "01 - Bright Lights [abc123].mp4"),
+                os.path.join(temp_dir, "The Example Band", "Neon Nights (2020)", "01 - Bright Lights.mp4"),
+            )
+
+    def test_clips_lane_falls_back_to_track_title_without_video_id(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage = ClipStorage(output_mode="clips_lane", output_path=temp_dir, staging_path=os.path.join(temp_dir, ".staging"))
+            target = self.make_target()
+            target = type(target)(
+                lidarr_track_id=target.lidarr_track_id,
+                artist_id=target.artist_id,
+                album_id=target.album_id,
+                artist=target.artist,
+                album=target.album,
+                album_year=target.album_year,
+                title=target.title,
+                track_number=target.track_number,
+                absolute_track_number=target.absolute_track_number,
+                duration=target.duration,
+                source_file_path=None,
+            )
+
+            final_path = storage.final_path(target, "abc123", ".mp4")
+
+            self.assertEqual(
+                final_path,
+                os.path.join(temp_dir, "The Example Band", "Neon Nights (2020)", "01 - Bright Lights.mp4"),
+            )
+
+    def test_clips_lane_appends_lidarr_id_when_expected_path_conflicts(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage = ClipStorage(output_mode="clips_lane", output_path=temp_dir, staging_path=os.path.join(temp_dir, ".staging"))
+
+            final_path = storage.final_path(self.make_target(), "abc123", ".mp4", conflict_checker=lambda path: True)
+
+            self.assertEqual(
+                final_path,
+                os.path.join(temp_dir, "The Example Band", "Neon Nights (2020)", "01 - Bright Lights [lidarr-42].mp4"),
             )
 
     def test_sidecar_path_is_written_beside_audio_file(self):
@@ -38,7 +74,7 @@ class ClipStorageTests(unittest.TestCase):
 
         final_path = storage.final_path(self.make_target(), "abc123", ".mp4")
 
-        self.assertEqual(final_path, "/music/The Example Band/Neon Nights/01 - Bright Lights.clip.mp4")
+        self.assertEqual(final_path, "/music/The Example Band/Neon Nights/01 - Bright Lights.mp4")
 
     def test_finalize_moves_staged_file_atomically(self):
         with tempfile.TemporaryDirectory() as temp_dir:

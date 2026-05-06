@@ -17,6 +17,10 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(settings.sync_artist_allowlist, [])
             self.assertEqual(settings.max_targets_per_run, 25)
             self.assertFalse(settings.download_enabled)
+            self.assertEqual(settings.youtube_po_provider, "off")
+            self.assertEqual(settings.youtube_po_provider_url, "http://lidaclips-pot:4416")
+            self.assertEqual(settings.youtube_player_clients, ["mweb", "default"])
+            self.assertTrue(settings.youtube_enable_hls_fallback)
             self.assertTrue(os.path.exists(os.path.join(temp_dir, "settings_config.json")))
 
     def test_environment_overrides_config_values(self):
@@ -38,6 +42,10 @@ class SettingsTests(unittest.TestCase):
                     "sync_artist_allowlist": "The Example Band, Another Artist",
                     "max_targets_per_run": "10",
                     "download_enabled": "true",
+                    "youtube_po_provider": "bgutil_http",
+                    "youtube_po_provider_url": "http://pot:4416",
+                    "youtube_player_clients": "mweb, default",
+                    "youtube_enable_hls_fallback": "false",
                 },
             )
 
@@ -48,6 +56,10 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(settings.sync_artist_allowlist, ["The Example Band", "Another Artist"])
             self.assertEqual(settings.max_targets_per_run, 10)
             self.assertTrue(settings.download_enabled)
+            self.assertEqual(settings.youtube_po_provider, "bgutil_http")
+            self.assertEqual(settings.youtube_po_provider_url, "http://pot:4416")
+            self.assertEqual(settings.youtube_player_clients, ["mweb", "default"])
+            self.assertFalse(settings.youtube_enable_hls_fallback)
 
 
 if __name__ == "__main__":

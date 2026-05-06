@@ -1,8 +1,15 @@
 services:
+  lidaclips-pot:
+    image: brainicism/bgutil-ytdlp-pot-provider:1.3.1
+    container_name: lidaclips-pot
+    restart: unless-stopped
+
   lidaclips:
     build: .
     image: lidaclips:latest
     container_name: lidaclips
+    depends_on:
+      - lidaclips-pot
     env_file:
       - .env
     volumes:

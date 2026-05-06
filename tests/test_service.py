@@ -7,6 +7,7 @@ from lidaclips.index import ClipIndex
 from lidaclips.models import ClipTarget
 from lidaclips.scoring import Candidate, ClipScorer
 from lidaclips.service import LidaClipsService
+from lidaclips.storage import ClipStorage
 
 
 class FakeLidarr:
@@ -50,6 +51,21 @@ class FakeDownloader:
         with open(self.file_path, "wb") as handle:
             handle.write(b"video")
         return {"file_path": self.file_path, "mime_type": "video/mp4"}
+
+
+class FakeStorageDownloader(FakeDownloader):
+    def __init__(self, file_path, storage):
+        super().__init__(file_path)
+        self.storage = storage
+
+
+class FakePoDownloader(FakeDownloader):
+    def __init__(self, file_path, po_health):
+        super().__init__(file_path)
+        self.po_health = po_health
+
+    def po_provider_health(self):
+        return self.po_health
 
 
 class FakeDecision:
@@ -272,6 +288,74 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(downloader.downloads[0][0].lidarr_track_id, 43)
             self.assertFalse(index.has_completed_clip(42))
             self.assertTrue(index.get_failure(42)["reason"].startswith("candidate_search_error: "))
+
+    def test_sync_once_reconciles_completed_clip_to_audio_matching_filename(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index = ClipIndex(":memory:")
+            storage = ClipStorage(
+                output_mode="clips_lane",
+                output_path=os.path.join(temp_dir, "clips"),
+                staging_path=os.path.join(temp_dir, "staging"),
+            )
+            old_path = os.path.join(temp_dir, "clips", "The Example Band", "Neon Nights (2020)", "01 - Bright Lights [abc123].mp4")
+            os.makedirs(os.path.dirname(old_path), exist_ok=True)
+            with open(old_path, "wb") as handle:
+                handle.write(b"video")
+            target = self.make_target()
+            target = type(target)(
+                lidarr_track_id=target.lidarr_track_id,
+                artist_id=target.artist_id,
+                album_id=target.album_id,
+                artist=target.artist,
+                album=target.album,
+                album_year=target.album_year,
+                title=target.title,
+                track_number=target.track_number,
+                absolute_track_number=target.absolute_track_number,
+                duration=target.duration,
+                source_file_path="/music/The Example Band/Neon Nights/01 - Bright Lights.flac",
+            )
+            index.upsert_track(target)
+            index.record_clip(
+                lidarr_track_id=42,
+                video_id="abc123",
+                source_url="https://www.youtube.com/watch?v=abc123",
+                title="The Example Band - Bright Lights (Official Music Video)",
+                file_path=old_path,
+                mime_type="video/mp4",
+                score=91.0,
+                evidence={"official": True},
+            )
+            service = LidaClipsService(
+                index=index,
+                lidarr_client=FakeLidarr([target]),
+                candidate_search=FakeSearch([]),
+                scorer=FakeScorer(),
+                downloader=FakeStorageDownloader("/unused/clip.mp4", storage),
+            )
+
+            summary = service.sync_once()
+
+            expected_path = os.path.join(temp_dir, "clips", "The Example Band", "Neon Nights (2020)", "01 - Bright Lights.mp4")
+            self.assertEqual(summary["reconciled"], 1)
+            self.assertFalse(os.path.exists(old_path))
+            self.assertTrue(os.path.exists(expected_path))
+            self.assertEqual(index.get_clip_by_track(42)["file_path"], expected_path)
+
+    def test_health_reports_po_provider_check_when_downloader_exposes_it(self):
+        index = ClipIndex(":memory:")
+        service = LidaClipsService(
+            index=index,
+            lidarr_client=FakeLidarr([]),
+            candidate_search=FakeSearch([]),
+            scorer=FakeScorer(),
+            downloader=FakePoDownloader("/unused/clip.mp4", {"ok": True, "address": "http://lidaclips-pot:4416"}),
+        )
+
+        payload = service.health_check()
+
+        self.assertTrue(payload["checks"]["po_provider"]["ok"])
+        self.assertEqual(payload["checks"]["po_provider"]["address"], "http://lidaclips-pot:4416")
 
 
 if __name__ == "__main__":

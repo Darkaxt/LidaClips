@@ -14,6 +14,7 @@ LidaTube downloads missing songs as audio. LidaClips does the parallel job for v
 - Searches YouTube through `yt-dlp`.
 - Scores candidates automatically and prefers official music videos.
 - Downloads to local staging first, then moves completed files into the configured output.
+- Names clips after the matching audio file basename, for example `08 - In the End.flac` becomes `08 - In the End.mp4`.
 - Stores durable state in SQLite at `/lidaclips/config/lidaclips.db`.
 - Exposes clip lookup and stream endpoints for clients such as Feishin or Aonsoku forks.
 
@@ -35,6 +36,8 @@ The default output mode is a separate clips lane:
 ```
 
 Sidecar output beside audio files is supported by `clip_output_mode=sidecar`, but the recommended default is `clip_output_mode=clips_lane`.
+
+In both output modes, the video filename follows the music filename. In `clips_lane` mode LidaClips keeps its own artist and album folders, then writes the source audio basename with the video extension. The YouTube video ID is stored in SQLite and API responses, not appended to normal filenames.
 
 For a Navidrome library backed by a mounted music drive, a typical mapping is:
 
@@ -74,6 +77,10 @@ staging_path=/lidaclips/staging
 minimum_clip_score=75
 max_resolution=1080
 preferred_container=mp4
+youtube_po_provider=off
+youtube_po_provider_url=http://lidaclips-pot:4416
+youtube_player_clients=mweb,default
+youtube_enable_hls_fallback=true
 sync_artist_allowlist=
 max_targets_per_run=25
 download_enabled=false
@@ -89,6 +96,8 @@ navidrome_token_or_password=navidrome-password-or-token
 ```
 
 Place a YouTube `cookies.txt` file in `/lidaclips/config` if your setup needs cookies for `yt-dlp`.
+
+For YouTube DASH formats that return HTTP 403, LidaClips can use an optional PO-token provider. The recommended Docker-first option is `youtube_po_provider=bgutil_http` with an internal `lidaclips-pot` container. HLS fallback remains enabled by default because YouTube format availability changes frequently.
 
 ## Configuration
 
@@ -116,6 +125,10 @@ Environment variables override `config/settings_config.json`.
 | `max_resolution` | `1080` | Maximum video height passed to `yt-dlp`. |
 | `preferred_container` | `mp4` | Final merged container. |
 | `search_limit` | `10` | Number of YouTube candidates to inspect per track. |
+| `youtube_po_provider` | `off` | `off` or `bgutil_http` for optional YouTube PO-token support. |
+| `youtube_po_provider_url` | `http://lidaclips-pot:4416` | Internal bgutil provider URL when PO-token support is enabled. |
+| `youtube_player_clients` | `mweb,default` | Comma-separated YouTube clients used for the primary DASH attempt. |
+| `youtube_enable_hls_fallback` | `true` | Keep the HLS retry path enabled after a primary DASH failure. |
 | `api_key` | empty | Optional API key for clip lookup and stream endpoints. |
 | `ytdlp_binary` | empty | Optional local `yt-dlp` binary path for non-container runs. |
 
@@ -147,6 +160,8 @@ OpenSubsonic-style video compatibility endpoints:
 - `GET /rest/stream.view?id={clip_id}`
 
 `/api/v1/health` checks the SQLite DB, staging path, clips path, Lidarr, and optional Navidrome. It is API-key protected. The OpenSubsonic-style endpoints return familiar video-shaped responses, but authentication is still the LidaClips API key rather than full Subsonic token auth.
+
+Custom clip responses include `file_name`, which is the resolved clip filename without the full server path.
 
 ## Matching Policy
 

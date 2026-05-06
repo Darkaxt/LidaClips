@@ -28,12 +28,18 @@ class Settings:
     api_key: str = ""
     search_limit: int = 10
     ytdlp_binary: str = ""
+    youtube_po_provider: str = "off"
+    youtube_po_provider_url: str = "http://lidaclips-pot:4416"
+    youtube_player_clients: list[str] = None
+    youtube_enable_hls_fallback: bool = True
 
     def __post_init__(self):
         if self.sync_schedule is None:
             self.sync_schedule = []
         if self.sync_artist_allowlist is None:
             self.sync_artist_allowlist = []
+        if self.youtube_player_clients is None:
+            self.youtube_player_clients = ["mweb", "default"]
 
     @classmethod
     def load(cls, config_folder: str = "config", environ: Mapping[str, str] | None = None) -> "Settings":
@@ -58,11 +64,15 @@ class Settings:
 
         data["sync_schedule"] = cls.parse_sync_schedule(data.get("sync_schedule", []))
         data["sync_artist_allowlist"] = cls.parse_csv_list(data.get("sync_artist_allowlist", []))
+        data["youtube_player_clients"] = cls.parse_csv_list(data.get("youtube_player_clients", ["mweb", "default"]))
+        if not data["youtube_player_clients"]:
+            data["youtube_player_clients"] = ["mweb", "default"]
         data["thread_limit"] = int(data["thread_limit"])
         data["search_limit"] = int(data["search_limit"])
         data["max_targets_per_run"] = int(data["max_targets_per_run"])
         data["max_resolution"] = int(data["max_resolution"])
         data["download_enabled"] = cls.parse_bool(data["download_enabled"])
+        data["youtube_enable_hls_fallback"] = cls.parse_bool(data["youtube_enable_hls_fallback"])
         data["sleep_interval"] = float(data["sleep_interval"])
         data["lidarr_api_timeout"] = float(data["lidarr_api_timeout"])
         data["minimum_clip_score"] = float(data["minimum_clip_score"])
@@ -113,11 +123,11 @@ class Settings:
     def _coerce_value(key: str, value: str):
         if key == "sync_schedule":
             return Settings.parse_sync_schedule(value)
-        if key == "sync_artist_allowlist":
+        if key in {"sync_artist_allowlist", "youtube_player_clients"}:
             return Settings.parse_csv_list(value)
         if key in {"thread_limit", "max_resolution", "search_limit", "max_targets_per_run"}:
             return int(value)
-        if key == "download_enabled":
+        if key in {"download_enabled", "youtube_enable_hls_fallback"}:
             return Settings.parse_bool(value)
         if key in {"sleep_interval", "lidarr_api_timeout", "minimum_clip_score"}:
             return float(value)

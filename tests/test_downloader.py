@@ -57,7 +57,7 @@ class DownloaderTests(unittest.TestCase):
                 track_number="1",
                 absolute_track_number=1,
                 duration=240,
-                source_file_path="/music/song.flac",
+                source_file_path="/music/The Example Band/Neon Nights/01 - Bright Lights.flac",
             )
             candidate = Candidate(
                 video_id="abc123",
@@ -77,7 +77,7 @@ class DownloaderTests(unittest.TestCase):
             self.assertIn("height<=720", created[0].options["format"])
             self.assertEqual(created[0].options["merge_output_format"], "mp4")
             self.assertEqual(result["mime_type"], "video/mp4")
-            self.assertTrue(result["file_path"].endswith(os.path.join("Neon Nights (2020)", "01 - Bright Lights [abc123].mp4")))
+            self.assertTrue(result["file_path"].endswith(os.path.join("Neon Nights (2020)", "01 - Bright Lights.mp4")))
             with open(result["file_path"], "rb") as handle:
                 self.assertEqual(handle.read(), b"video")
 
@@ -151,6 +151,89 @@ class DownloaderTests(unittest.TestCase):
             self.assertIn("bv*[height<=720]+ba", created[0].options["format"])
             self.assertIn("protocol*=m3u8", created[1].options["format"])
             self.assertTrue(os.path.exists(result["file_path"]))
+
+    def test_download_passes_po_token_args_only_to_primary_dash_attempt(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            created = []
+
+            def factory(options):
+                instance = FailingYtDlp(options) if not created else FakeYtDlp(options)
+                created.append(instance)
+                return instance
+
+            target = ClipTarget(
+                lidarr_track_id=42,
+                artist_id=1,
+                album_id=10,
+                artist="The Example Band",
+                album="Neon Nights",
+                album_year=2020,
+                title="Bright Lights",
+                track_number="1",
+                absolute_track_number=1,
+                duration=240,
+                source_file_path="/music/song.flac",
+            )
+            candidate = Candidate(video_id="abc123", title="Official", webpage_url="https://www.youtube.com/watch?v=abc123")
+            storage = ClipStorage(
+                output_mode="clips_lane",
+                output_path=os.path.join(temp_dir, "clips"),
+                staging_path=os.path.join(temp_dir, "staging"),
+            )
+            downloader = ClipDownloader(
+                storage=storage,
+                ytdlp_factory=factory,
+                max_resolution=720,
+                youtube_po_provider="bgutil_http",
+                youtube_po_provider_url="http://lidaclips-pot:4416",
+                youtube_player_clients=["mweb", "default"],
+            )
+
+            downloader.download(target, candidate)
+
+            self.assertEqual(
+                created[0].options["extractor_args"],
+                {
+                    "youtube": {"player_client": ["mweb,default"]},
+                    "youtubepot-bgutilhttp": {"base_url": ["http://lidaclips-pot:4416"]},
+                },
+            )
+            self.assertNotIn("extractor_args", created[1].options)
+
+    def test_download_can_disable_hls_fallback(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            created = []
+
+            def factory(options):
+                instance = FailingYtDlp(options)
+                created.append(instance)
+                return instance
+
+            target = ClipTarget(
+                lidarr_track_id=42,
+                artist_id=1,
+                album_id=10,
+                artist="The Example Band",
+                album="Neon Nights",
+                album_year=2020,
+                title="Bright Lights",
+                track_number="1",
+                absolute_track_number=1,
+                duration=240,
+                source_file_path="/music/song.flac",
+            )
+            candidate = Candidate(video_id="abc123", title="Official", webpage_url="https://www.youtube.com/watch?v=abc123")
+            storage = ClipStorage(
+                output_mode="clips_lane",
+                output_path=os.path.join(temp_dir, "clips"),
+                staging_path=os.path.join(temp_dir, "staging"),
+            )
+            downloader = ClipDownloader(storage=storage, ytdlp_factory=factory, youtube_enable_hls_fallback=False)
+
+            with self.assertRaisesRegex(RuntimeError, "HTTP Error 403"):
+                downloader.download(target, candidate)
+
+            self.assertEqual(len(created), 1)
 
 
 if __name__ == "__main__":

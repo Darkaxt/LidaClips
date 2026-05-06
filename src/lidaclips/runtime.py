@@ -130,6 +130,10 @@ class Runtime:
             "sync_artist_allowlist": self.settings.sync_artist_allowlist,
             "max_targets_per_run": self.settings.max_targets_per_run,
             "download_enabled": self.settings.download_enabled,
+            "youtube_po_provider": self.settings.youtube_po_provider,
+            "youtube_po_provider_url": self.settings.youtube_po_provider_url,
+            "youtube_player_clients": self.settings.youtube_player_clients,
+            "youtube_enable_hls_fallback": self.settings.youtube_enable_hls_fallback,
         }
 
 
@@ -159,6 +163,11 @@ def build_runtime(config_folder: str = "config") -> Runtime:
             preferred_container=settings.preferred_container,
             max_resolution=settings.max_resolution,
             cookies_path=cookies_path,
+            youtube_po_provider=settings.youtube_po_provider,
+            youtube_po_provider_url=settings.youtube_po_provider_url,
+            youtube_player_clients=settings.youtube_player_clients,
+            youtube_enable_hls_fallback=settings.youtube_enable_hls_fallback,
+            path_conflict_checker=lambda path, target: index.path_conflicts(path, target.lidarr_track_id),
         ),
         navidrome_client=navidrome_client,
         sync_artist_allowlist=settings.sync_artist_allowlist,

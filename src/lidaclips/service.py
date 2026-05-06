@@ -1,7 +1,9 @@
 import logging
+import os
 from typing import Any
 
 from .index import ClipIndex
+from .models import ClipTarget
 from .scoring import ClipScorer
 from .text import normalize_text
 
@@ -45,8 +47,13 @@ class LidaClipsService:
             "processed": 0,
             "download_disabled": 0,
             "search_errors": 0,
+            "reconciled": 0,
+            "reconcile_errors": 0,
         }
         targets = self.lidarr_client.collect_pending_tracks(self.index)
+        reconciled, reconcile_errors = self._reconcile_completed_clip_paths()
+        summary["reconciled"] = reconciled
+        summary["reconcile_errors"] = reconcile_errors
         summary["targets"] = len(targets)
         targets = self._filter_targets(targets, summary)
         summary["processed"] = len(targets)
@@ -147,6 +154,11 @@ class LidaClipsService:
         else:
             checks["navidrome"] = self._dependency_check(self.navidrome_client)
 
+        if hasattr(self.downloader, "po_provider_health"):
+            po_provider_check = self.downloader.po_provider_health()
+            if not po_provider_check.get("skipped"):
+                checks["po_provider"] = po_provider_check
+
         status = "ok" if all(check.get("ok") for check in checks.values()) else "degraded"
         return {"status": status, "checks": checks}
 
@@ -154,3 +166,57 @@ class LidaClipsService:
         if hasattr(client, "ping"):
             return client.ping()
         return {"ok": False, "error": "client has no ping method"}
+
+    def _reconcile_completed_clip_paths(self) -> tuple[int, int]:
+        storage = getattr(self.downloader, "storage", None)
+        if storage is None or not hasattr(storage, "final_path") or not hasattr(storage, "move_existing"):
+            return 0, 0
+
+        reconciled = 0
+        errors = 0
+        for row in self.index.all_clips():
+            target = self._target_from_clip_row(row)
+            old_path = row["file_path"]
+            extension = os.path.splitext(old_path)[1] or f".{getattr(self.downloader, 'preferred_container', 'mp4')}"
+            try:
+                expected_path = storage.final_path(
+                    target,
+                    row["video_id"],
+                    extension,
+                    conflict_checker=lambda path, clip=row, item=target: self.index.path_conflicts(
+                        path,
+                        item.lidarr_track_id,
+                        exclude_clip_id=clip["id"],
+                    ),
+                )
+                if os.path.normcase(os.path.abspath(old_path)) == os.path.normcase(os.path.abspath(expected_path)):
+                    continue
+                if os.path.exists(expected_path):
+                    if not os.path.exists(old_path):
+                        self.index.update_clip_file_path(row["id"], expected_path)
+                        reconciled += 1
+                    continue
+                if not os.path.exists(old_path):
+                    continue
+                moved_path = storage.move_existing(old_path, expected_path)
+                self.index.update_clip_file_path(row["id"], moved_path)
+                reconciled += 1
+            except Exception:
+                self.logger.exception("Clip path reconciliation failed for clip %s", row["id"])
+                errors += 1
+        return reconciled, errors
+
+    def _target_from_clip_row(self, row: dict[str, Any]) -> ClipTarget:
+        return ClipTarget(
+            lidarr_track_id=int(row["lidarr_track_id"]),
+            artist_id=0,
+            album_id=0,
+            artist=row["artist"],
+            album=row["album"],
+            album_year=row.get("album_year"),
+            title=row["track_title"],
+            track_number=row.get("track_number") or "",
+            absolute_track_number=int(row.get("absolute_track_number") or 0),
+            duration=row.get("duration"),
+            source_file_path=row.get("source_file_path"),
+        )

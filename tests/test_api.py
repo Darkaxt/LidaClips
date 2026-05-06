@@ -88,6 +88,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(payload["clips"]), 1)
         self.assertEqual(payload["clips"][0]["lidarr_track_id"], 42)
+        self.assertEqual(payload["clips"][0]["file_name"], "clip.mp4")
 
         track_response = self.client.get("/api/v1/tracks/42/clip", headers=self.headers())
         self.assertEqual(track_response.status_code, 200)
