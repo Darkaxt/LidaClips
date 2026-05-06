@@ -127,6 +127,9 @@ class Runtime:
             "max_resolution": self.settings.max_resolution,
             "preferred_container": self.settings.preferred_container,
             "sync_schedule": self.settings.sync_schedule,
+            "sync_artist_allowlist": self.settings.sync_artist_allowlist,
+            "max_targets_per_run": self.settings.max_targets_per_run,
+            "download_enabled": self.settings.download_enabled,
         }
 
 
@@ -158,5 +161,8 @@ def build_runtime(config_folder: str = "config") -> Runtime:
             cookies_path=cookies_path,
         ),
         navidrome_client=navidrome_client,
+        sync_artist_allowlist=settings.sync_artist_allowlist,
+        max_targets_per_run=settings.max_targets_per_run,
+        download_enabled=settings.download_enabled,
     )
     return Runtime(settings, index, service)

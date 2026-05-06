@@ -74,6 +74,9 @@ staging_path=/lidaclips/staging
 minimum_clip_score=75
 max_resolution=1080
 preferred_container=mp4
+sync_artist_allowlist=
+max_targets_per_run=25
+download_enabled=false
 api_key=change-me-too
 ```
 
@@ -103,6 +106,9 @@ Environment variables override `config/settings_config.json`.
 | `thread_limit` | `1` | Reserved worker limit. |
 | `sleep_interval` | `0` | Reserved per-item pause. |
 | `sync_schedule` | empty | Comma-separated hours, for example `2,20`. |
+| `sync_artist_allowlist` | empty | Comma-separated artist names to limit a dry run or first rollout. |
+| `max_targets_per_run` | `25` | Maximum pending tracks to process in one sync run. |
+| `download_enabled` | `false` | When false, accepted candidates are recorded without downloading clips. |
 | `clip_output_mode` | `clips_lane` | `clips_lane` or `sidecar`. |
 | `clip_output_path` | `/lidaclips/clips` | Root folder for `clips_lane` output. |
 | `staging_path` | `/lidaclips/staging` | Local staging folder for partial downloads. |
@@ -128,6 +134,7 @@ LidaClips resolves that directory to `yt-dlp.exe`.
 Custom clip API:
 
 - `GET /api/v1/ping`
+- `GET /api/v1/health`
 - `GET /api/v1/clips?artist=&album=&track=`
 - `GET /api/v1/tracks/{lidarr_track_id}/clip`
 - `GET /api/v1/navidrome/{song_id}/clip`
@@ -139,7 +146,7 @@ OpenSubsonic-style video compatibility endpoints:
 - `GET /rest/getVideoInfo.view?id={clip_id}&f=json`
 - `GET /rest/stream.view?id={clip_id}`
 
-The OpenSubsonic-style endpoints return familiar video-shaped responses, but authentication is still the LidaClips API key rather than full Subsonic token auth.
+`/api/v1/health` checks the SQLite DB, staging path, clips path, Lidarr, and optional Navidrome. It is API-key protected. The OpenSubsonic-style endpoints return familiar video-shaped responses, but authentication is still the LidaClips API key rather than full Subsonic token auth.
 
 ## Matching Policy
 

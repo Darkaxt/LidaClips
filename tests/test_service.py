@@ -70,6 +70,21 @@ class ServiceTests(unittest.TestCase):
             source_file_path="/music/song.flac",
         )
 
+    def make_other_target(self):
+        return ClipTarget(
+            lidarr_track_id=43,
+            artist_id=2,
+            album_id=11,
+            artist="Other Artist",
+            album="Other Album",
+            album_year=2021,
+            title="Other Song",
+            track_number="1",
+            absolute_track_number=1,
+            duration=180,
+            source_file_path="/music/other.flac",
+        )
+
     def test_sync_once_records_downloaded_official_clip(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             index = ClipIndex(":memory:")
@@ -160,6 +175,66 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(summary["downloaded"], 1)
             self.assertEqual(downloader.downloads[0][1].video_id, "accepted-lower")
             self.assertEqual(index.get_clip_by_track(42)["video_id"], "accepted-lower")
+
+    def test_sync_once_respects_artist_allowlist_and_target_limit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index = ClipIndex(":memory:")
+            downloader = FakeDownloader(os.path.join(temp_dir, "clip.mp4"))
+            service = LidaClipsService(
+                index=index,
+                lidarr_client=FakeLidarr([self.make_other_target(), self.make_target()]),
+                candidate_search=FakeSearch(
+                    [
+                        Candidate(
+                            video_id="accepted",
+                            title="The Example Band - Bright Lights (Official Music Video)",
+                            webpage_url="https://example.test/accepted",
+                        )
+                    ]
+                ),
+                scorer=FakeScorer(),
+                downloader=downloader,
+                sync_artist_allowlist=["The Example Band"],
+                max_targets_per_run=1,
+            )
+
+            summary = service.sync_once()
+
+            self.assertEqual(summary["targets"], 2)
+            self.assertEqual(summary["skipped_by_allowlist"], 1)
+            self.assertEqual(summary["limited"], 0)
+            self.assertEqual(summary["processed"], 1)
+            self.assertEqual(summary["downloaded"], 1)
+            self.assertEqual(downloader.downloads[0][0].artist, "The Example Band")
+
+    def test_sync_once_records_accepted_candidate_without_download_when_disabled(self):
+        index = ClipIndex(":memory:")
+        downloader = FakeDownloader("/unused/clip.mp4")
+        service = LidaClipsService(
+            index=index,
+            lidarr_client=FakeLidarr([self.make_target()]),
+            candidate_search=FakeSearch(
+                [
+                    Candidate(
+                        video_id="accepted",
+                        title="The Example Band - Bright Lights (Official Music Video)",
+                        webpage_url="https://example.test/accepted",
+                    )
+                ]
+            ),
+            scorer=FakeScorer(),
+            downloader=downloader,
+            download_enabled=False,
+        )
+
+        summary = service.sync_once()
+
+        self.assertEqual(summary["processed"], 1)
+        self.assertEqual(summary["download_disabled"], 1)
+        self.assertEqual(summary["downloaded"], 0)
+        self.assertEqual(downloader.downloads, [])
+        self.assertFalse(index.has_completed_clip(42))
+        self.assertEqual(index.get_failure(42)["reason"], "download_disabled")
 
 
 if __name__ == "__main__":

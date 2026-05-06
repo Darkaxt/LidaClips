@@ -36,6 +36,13 @@ class LidarrClient:
         targets.sort(key=lambda item: (item.artist.lower(), item.album.lower(), item.absolute_track_number, item.title.lower()))
         return targets
 
+    def ping(self) -> dict[str, Any]:
+        try:
+            self._get("/api/v1/system/status")
+            return {"ok": True, "address": self.address}
+        except Exception as exc:
+            return {"ok": False, "address": self.address, "error": str(exc)}
+
     def _get_albums(self) -> list[dict[str, Any]]:
         return self._get("/api/v1/album", {"includeArtist": "true"})
 

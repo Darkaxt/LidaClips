@@ -85,6 +85,29 @@ class ClipIndex:
     def close(self) -> None:
         self.connection.close()
 
+    def check_writable(self) -> dict[str, Any]:
+        try:
+            with self.connection:
+                self.connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS health_checks (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        checked_at TEXT NOT NULL
+                    )
+                    """
+                )
+                self.connection.execute(
+                    """
+                    INSERT INTO health_checks (id, checked_at)
+                    VALUES (1, ?)
+                    ON CONFLICT(id) DO UPDATE SET checked_at = excluded.checked_at
+                    """,
+                    (utc_now(),),
+                )
+            return {"ok": True, "path": self.db_path}
+        except Exception as exc:
+            return {"ok": False, "path": self.db_path, "error": str(exc)}
+
     def upsert_track(self, target: ClipTarget, navidrome_song_id: str | None = None) -> None:
         with self.connection:
             self.connection.execute(

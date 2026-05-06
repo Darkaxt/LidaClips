@@ -14,6 +14,9 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(settings.clip_output_path, "/lidaclips/clips")
             self.assertEqual(settings.preferred_container, "mp4")
             self.assertEqual(settings.sync_schedule, [])
+            self.assertEqual(settings.sync_artist_allowlist, [])
+            self.assertEqual(settings.max_targets_per_run, 25)
+            self.assertFalse(settings.download_enabled)
             self.assertTrue(os.path.exists(os.path.join(temp_dir, "settings_config.json")))
 
     def test_environment_overrides_config_values(self):
@@ -32,6 +35,9 @@ class SettingsTests(unittest.TestCase):
                     "lidarr_address": "http://second",
                     "clip_output_mode": "sidecar",
                     "sync_schedule": "2, 20, 27",
+                    "sync_artist_allowlist": "The Example Band, Another Artist",
+                    "max_targets_per_run": "10",
+                    "download_enabled": "true",
                 },
             )
 
@@ -39,6 +45,9 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(settings.minimum_clip_score, 70)
             self.assertEqual(settings.clip_output_mode, "sidecar")
             self.assertEqual(settings.sync_schedule, [0, 2, 20])
+            self.assertEqual(settings.sync_artist_allowlist, ["The Example Band", "Another Artist"])
+            self.assertEqual(settings.max_targets_per_run, 10)
+            self.assertTrue(settings.download_enabled)
 
 
 if __name__ == "__main__":

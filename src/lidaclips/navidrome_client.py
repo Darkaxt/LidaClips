@@ -46,6 +46,14 @@ class NavidromeClient:
         response = payload.get("subsonic-response", {})
         return response.get("status") == "ok" and bool(response.get("song"))
 
+    def ping(self) -> dict[str, Any]:
+        try:
+            payload = self._get("/rest/ping.view", {})
+            response = payload.get("subsonic-response", {})
+            return {"ok": response.get("status") == "ok", "address": self.address}
+        except Exception as exc:
+            return {"ok": False, "address": self.address, "error": str(exc)}
+
     def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         request_params = dict(params)
         request_params.update(

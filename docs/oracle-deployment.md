@@ -27,7 +27,7 @@ Keep staging on local disk so partial downloads and failed merges do not appear 
 ```yaml
 services:
   lidaclips:
-    image: ghcr.io/your-user/lidaclips:latest
+    image: ghcr.io/darkaxt/lidaclips:latest
     container_name: lidaclips
     env_file:
       - .env
@@ -73,10 +73,13 @@ navidrome_token_or_password=change-me
 clip_output_mode=clips_lane
 clip_output_path=/lidaclips/clips
 staging_path=/lidaclips/staging
-minimum_clip_score=75
-max_resolution=1080
+minimum_clip_score=80
+max_resolution=720
 preferred_container=mp4
-sync_schedule=2,20
+sync_schedule=
+sync_artist_allowlist=One Test Artist
+max_targets_per_run=10
+download_enabled=false
 api_key=change-me-too
 CLIPS_BASIC_AUTH_HASH=change-me
 ```

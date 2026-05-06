@@ -16,6 +16,9 @@ class Settings:
     thread_limit: int = 1
     sleep_interval: float = 0.0
     sync_schedule: list[int] = None
+    sync_artist_allowlist: list[str] = None
+    max_targets_per_run: int = 25
+    download_enabled: bool = False
     clip_output_mode: str = "clips_lane"
     clip_output_path: str = "/lidaclips/clips"
     staging_path: str = "/lidaclips/staging"
@@ -29,6 +32,8 @@ class Settings:
     def __post_init__(self):
         if self.sync_schedule is None:
             self.sync_schedule = []
+        if self.sync_artist_allowlist is None:
+            self.sync_artist_allowlist = []
 
     @classmethod
     def load(cls, config_folder: str = "config", environ: Mapping[str, str] | None = None) -> "Settings":
@@ -52,9 +57,12 @@ class Settings:
                 data[key] = cls._coerce_value(key, environ[upper_key])
 
         data["sync_schedule"] = cls.parse_sync_schedule(data.get("sync_schedule", []))
+        data["sync_artist_allowlist"] = cls.parse_csv_list(data.get("sync_artist_allowlist", []))
         data["thread_limit"] = int(data["thread_limit"])
         data["search_limit"] = int(data["search_limit"])
+        data["max_targets_per_run"] = int(data["max_targets_per_run"])
         data["max_resolution"] = int(data["max_resolution"])
+        data["download_enabled"] = cls.parse_bool(data["download_enabled"])
         data["sleep_interval"] = float(data["sleep_interval"])
         data["lidarr_api_timeout"] = float(data["lidarr_api_timeout"])
         data["minimum_clip_score"] = float(data["minimum_clip_score"])
@@ -86,11 +94,31 @@ class Settings:
         return sorted(set(parsed))
 
     @staticmethod
+    def parse_csv_list(value) -> list[str]:
+        if value in ("", None):
+            return []
+        if isinstance(value, list):
+            raw_values = value
+        else:
+            raw_values = str(value).split(",")
+        return [str(raw).strip() for raw in raw_values if str(raw).strip()]
+
+    @staticmethod
+    def parse_bool(value) -> bool:
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
     def _coerce_value(key: str, value: str):
         if key == "sync_schedule":
             return Settings.parse_sync_schedule(value)
-        if key in {"thread_limit", "max_resolution", "search_limit"}:
+        if key == "sync_artist_allowlist":
+            return Settings.parse_csv_list(value)
+        if key in {"thread_limit", "max_resolution", "search_limit", "max_targets_per_run"}:
             return int(value)
+        if key == "download_enabled":
+            return Settings.parse_bool(value)
         if key in {"sleep_interval", "lidarr_api_timeout", "minimum_clip_score"}:
             return float(value)
         return value

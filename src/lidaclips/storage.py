@@ -1,6 +1,7 @@
 import errno
 import os
 import shutil
+from typing import Any
 
 from .models import ClipTarget
 from .text import compact_track_number, safe_filename
@@ -48,3 +49,24 @@ class ClipStorage:
             os.replace(temp_final_path, final_path)
             os.remove(staged_path)
         return final_path
+
+    def check_paths(self) -> dict[str, dict[str, Any]]:
+        checks = {
+            "staging": self._check_writable_directory(self.staging_path),
+        }
+        if self.output_mode == "clips_lane":
+            checks["clips"] = self._check_writable_directory(self.output_path)
+        else:
+            checks["clips"] = {"ok": True, "path": self.output_mode, "skipped": True}
+        return checks
+
+    def _check_writable_directory(self, path: str) -> dict[str, Any]:
+        try:
+            os.makedirs(path, exist_ok=True)
+            probe_path = os.path.join(path, ".lidaclips-healthcheck.tmp")
+            with open(probe_path, "w", encoding="utf-8") as handle:
+                handle.write("ok")
+            os.remove(probe_path)
+            return {"ok": True, "path": path}
+        except Exception as exc:
+            return {"ok": False, "path": path, "error": str(exc)}

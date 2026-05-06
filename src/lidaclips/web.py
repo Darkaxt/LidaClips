@@ -33,6 +33,15 @@ def create_app(index: ClipIndex, api_key: str = "", service: Any | None = None) 
     def ping():
         return jsonify({"status": "ok", "service": "LidaClips"})
 
+    @app.get("/api/v1/health")
+    @require_api_key
+    def health():
+        service = app.config.get("LIDACLIPS_SERVICE")
+        if service is None or not hasattr(service, "health_check"):
+            return jsonify({"status": "degraded", "checks": {"service": {"ok": False, "error": "service unavailable"}}}), 503
+        payload = service.health_check()
+        return jsonify(payload), 200 if payload.get("status") == "ok" else 503
+
     @app.get("/api/v1/clips")
     @require_api_key
     def clips():

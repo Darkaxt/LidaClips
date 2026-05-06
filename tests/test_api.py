@@ -7,6 +7,20 @@ from lidaclips.models import ClipTarget
 from lidaclips.web import create_app
 
 
+class FakeHealthService:
+    def health_check(self):
+        return {
+            "status": "ok",
+            "checks": {
+                "database": {"ok": True},
+                "staging": {"ok": True},
+                "clips": {"ok": True},
+                "lidarr": {"ok": True},
+                "navidrome": {"ok": True},
+            },
+        }
+
+
 class ApiTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -38,7 +52,7 @@ class ApiTests(unittest.TestCase):
             score=91.0,
             evidence={"official": True},
         )
-        self.app = create_app(self.index, api_key="secret")
+        self.app = create_app(self.index, api_key="secret", service=FakeHealthService())
         self.client = self.app.test_client()
 
     def tearDown(self):
@@ -52,6 +66,17 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["status"], "ok")
+
+    def test_health_requires_api_key_and_returns_dependency_checks(self):
+        unauthorized = self.client.get("/api/v1/health")
+        self.assertEqual(unauthorized.status_code, 401)
+
+        response = self.client.get("/api/v1/health", headers=self.headers())
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["status"], "ok")
+        self.assertTrue(payload["checks"]["database"]["ok"])
 
     def test_search_clips_and_track_lookup_require_api_key(self):
         unauthorized = self.client.get("/api/v1/clips?artist=Example")

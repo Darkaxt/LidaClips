@@ -13,6 +13,9 @@ const navidromeAddress = document.getElementById("navidrome-address");
 const clipOutputMode = document.getElementById("clip-output-mode");
 const clipOutputPath = document.getElementById("clip-output-path");
 const syncSchedule = document.getElementById("sync-schedule");
+const syncArtistAllowlist = document.getElementById("sync-artist-allowlist");
+const maxTargetsPerRun = document.getElementById("max-targets-per-run");
+const downloadEnabled = document.getElementById("download-enabled");
 
 const summaryTargets = document.getElementById("summary-targets");
 const summaryDownloaded = document.getElementById("summary-downloaded");
@@ -65,6 +68,9 @@ socket.on("settings_loaded", (settings) => {
     clipOutputMode.value = settings.clip_output_mode || "";
     clipOutputPath.value = settings.clip_output_path || "";
     syncSchedule.value = (settings.sync_schedule || []).join(", ");
+    syncArtistAllowlist.value = (settings.sync_artist_allowlist || []).join(", ");
+    maxTargetsPerRun.value = settings.max_targets_per_run ?? "";
+    downloadEnabled.value = settings.download_enabled ? "true" : "false";
 });
 
 socket.on("state_update", (state) => {
