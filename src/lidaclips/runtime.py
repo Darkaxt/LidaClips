@@ -156,6 +156,9 @@ def build_runtime(config_folder: str = "config") -> Runtime:
             limit=settings.search_limit,
             cookies_path=cookies_path,
             ytdlp_binary=settings.ytdlp_binary,
+            youtube_po_provider=settings.youtube_po_provider,
+            youtube_po_provider_url=settings.youtube_po_provider_url,
+            youtube_player_clients=settings.youtube_player_clients,
         ),
         scorer=ClipScorer(settings.minimum_clip_score),
         downloader=ClipDownloader(

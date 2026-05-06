@@ -16,12 +16,18 @@ class YtDlpCandidateSearch:
         ytdlp_factory: Callable | None = None,
         ytdlp_binary: str = "",
         js_runtime_path: str | None = None,
+        youtube_po_provider: str = "off",
+        youtube_po_provider_url: str = "http://lidaclips-pot:4416",
+        youtube_player_clients: list[str] | None = None,
     ):
         self.limit = int(limit)
         self.cookies_path = cookies_path
         self.ytdlp_factory = ytdlp_factory
         self.ytdlp_binary = ytdlp_binary
         self.js_runtime_path = js_runtime_path if js_runtime_path is not None else shutil.which("node")
+        self.youtube_po_provider = youtube_po_provider
+        self.youtube_po_provider_url = youtube_po_provider_url.rstrip("/")
+        self.youtube_player_clients = youtube_player_clients or ["mweb", "default"]
 
     def search(self, target: ClipTarget) -> list[Candidate]:
         query = f"ytsearch{self.limit}:{target.artist} {target.title} official music video"
@@ -37,6 +43,9 @@ class YtDlpCandidateSearch:
             options["cookiefile"] = self.cookies_path
         if self.js_runtime_path:
             options["js_runtimes"] = {"node": {"path": self.js_runtime_path}}
+        extractor_args = self._extractor_args()
+        if extractor_args:
+            options["extractor_args"] = extractor_args
         with self._factory()(options) as ydl:
             result = ydl.extract_info(query, download=False)
         entries = (result or {}).get("entries") or []
@@ -49,9 +58,27 @@ class YtDlpCandidateSearch:
             command.extend(["--cookies", self.cookies_path])
         if self.js_runtime_path:
             command.extend(["--js-runtimes", f"node:{self.js_runtime_path}"])
+        for extractor_arg in self._binary_extractor_args():
+            command.extend(["--extractor-args", extractor_arg])
         result = subprocess.run(command, check=True, capture_output=True, text=True, encoding="utf-8")
         entries = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
         return [self._candidate_from(entry) for entry in entries if entry]
+
+    def _extractor_args(self) -> dict | None:
+        if self.youtube_po_provider != "bgutil_http":
+            return None
+        return {
+            "youtube": {"player_client": [",".join(self.youtube_player_clients)]},
+            "youtubepot-bgutilhttp": {"base_url": [self.youtube_po_provider_url]},
+        }
+
+    def _binary_extractor_args(self) -> list[str]:
+        if self.youtube_po_provider != "bgutil_http":
+            return []
+        return [
+            f"youtube:player_client={','.join(self.youtube_player_clients)}",
+            f"youtubepot-bgutilhttp:base_url={self.youtube_po_provider_url}",
+        ]
 
     def _candidate_from(self, entry: dict) -> Candidate:
         video_id = entry.get("id") or entry.get("display_id") or ""

@@ -92,6 +92,43 @@ class CandidateSearchTests(unittest.TestCase):
 
         self.assertEqual(created[0].options["js_runtimes"], {"node": {"path": "/usr/bin/node"}})
 
+    def test_passes_po_provider_args_to_candidate_extraction(self):
+        created = []
+
+        def factory(options):
+            instance = FakeYtDlp(options)
+            created.append(instance)
+            return instance
+
+        target = ClipTarget(
+            lidarr_track_id=42,
+            artist_id=1,
+            album_id=10,
+            artist="The Example Band",
+            album="Neon Nights",
+            album_year=2020,
+            title="Bright Lights",
+            track_number="1",
+            absolute_track_number=1,
+            duration=240,
+            source_file_path="/music/song.flac",
+        )
+
+        YtDlpCandidateSearch(
+            ytdlp_factory=factory,
+            youtube_po_provider="bgutil_http",
+            youtube_po_provider_url="http://lidaclips-pot:4416",
+            youtube_player_clients=["mweb", "default"],
+        ).search(target)
+
+        self.assertEqual(
+            created[0].options["extractor_args"],
+            {
+                "youtube": {"player_client": ["mweb,default"]},
+                "youtubepot-bgutilhttp": {"base_url": ["http://lidaclips-pot:4416"]},
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
