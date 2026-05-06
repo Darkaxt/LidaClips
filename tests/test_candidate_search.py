@@ -66,6 +66,32 @@ class CandidateSearchTests(unittest.TestCase):
         self.assertEqual(candidates[0].channel_follower_count, 900000)
         self.assertTrue(candidates[0].channel_is_verified)
 
+    def test_enables_configured_node_runtime_for_youtube_extraction(self):
+        created = []
+
+        def factory(options):
+            instance = FakeYtDlp(options)
+            created.append(instance)
+            return instance
+
+        target = ClipTarget(
+            lidarr_track_id=42,
+            artist_id=1,
+            album_id=10,
+            artist="The Example Band",
+            album="Neon Nights",
+            album_year=2020,
+            title="Bright Lights",
+            track_number="1",
+            absolute_track_number=1,
+            duration=240,
+            source_file_path="/music/song.flac",
+        )
+
+        YtDlpCandidateSearch(ytdlp_factory=factory, js_runtime_path="/usr/bin/node").search(target)
+
+        self.assertEqual(created[0].options["js_runtimes"], {"node": {"path": "/usr/bin/node"}})
+
 
 if __name__ == "__main__":
     unittest.main()

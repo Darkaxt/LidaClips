@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 from typing import Callable
 
@@ -8,11 +9,19 @@ from .scoring import Candidate
 
 
 class YtDlpCandidateSearch:
-    def __init__(self, limit: int = 10, cookies_path: str | None = None, ytdlp_factory: Callable | None = None, ytdlp_binary: str = ""):
+    def __init__(
+        self,
+        limit: int = 10,
+        cookies_path: str | None = None,
+        ytdlp_factory: Callable | None = None,
+        ytdlp_binary: str = "",
+        js_runtime_path: str | None = None,
+    ):
         self.limit = int(limit)
         self.cookies_path = cookies_path
         self.ytdlp_factory = ytdlp_factory
         self.ytdlp_binary = ytdlp_binary
+        self.js_runtime_path = js_runtime_path if js_runtime_path is not None else shutil.which("node")
 
     def search(self, target: ClipTarget) -> list[Candidate]:
         query = f"ytsearch{self.limit}:{target.artist} {target.title} official music video"
@@ -26,6 +35,8 @@ class YtDlpCandidateSearch:
         }
         if self.cookies_path:
             options["cookiefile"] = self.cookies_path
+        if self.js_runtime_path:
+            options["js_runtimes"] = {"node": {"path": self.js_runtime_path}}
         with self._factory()(options) as ydl:
             result = ydl.extract_info(query, download=False)
         entries = (result or {}).get("entries") or []
@@ -36,6 +47,8 @@ class YtDlpCandidateSearch:
         command = [binary, "--dump-json", "--skip-download", "--no-playlist", query]
         if self.cookies_path:
             command.extend(["--cookies", self.cookies_path])
+        if self.js_runtime_path:
+            command.extend(["--js-runtimes", f"node:{self.js_runtime_path}"])
         result = subprocess.run(command, check=True, capture_output=True, text=True, encoding="utf-8")
         entries = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
         return [self._candidate_from(entry) for entry in entries if entry]
