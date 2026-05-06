@@ -63,7 +63,7 @@ class LidarrClient:
         ids = sorted({track_file_id for raw_id in track_file_ids if (track_file_id := self._int_or_none(raw_id))})
         if not ids:
             return {}
-        payload = self._get("/api/v1/trackfile", {"trackFileIds": ",".join(str(track_file_id) for track_file_id in ids)})
+        payload = self._get("/api/v1/trackfile", {"trackFileIds": ids})
         return {
             int(item["id"]): item
             for item in payload

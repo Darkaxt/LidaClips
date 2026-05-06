@@ -136,7 +136,21 @@ class LidarrTargetTests(unittest.TestCase):
         targets = client.collect_present_tracks()
 
         self.assertEqual(targets[0].source_file_path, "/data/music/The Example Band/Neon Nights/01 - Bright Lights.flac")
-        self.assertEqual(session.trackfile_params["trackFileIds"], "100")
+        self.assertEqual(session.trackfile_params["trackFileIds"], [100])
+
+    def test_trackfile_lookup_uses_repeated_query_values_for_multiple_ids(self):
+        session = TrackFileSession(
+            trackfile_payload=[
+                {"id": 100, "path": "/music/one.flac"},
+                {"id": 101, "path": "/music/two.flac"},
+            ]
+        )
+        client = LidarrClient("http://lidarr:8686", "key", session=session)
+
+        track_files = client._get_track_files([100, 101])
+
+        self.assertEqual(sorted(track_files), [100, 101])
+        self.assertEqual(session.trackfile_params["trackFileIds"], [100, 101])
 
     def test_collects_source_file_path_from_track_by_id_fallback(self):
         session = TrackFileSession(
