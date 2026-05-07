@@ -352,7 +352,7 @@ class ClipIndex:
                 (1 if paused else 0, utc_now()),
             )
 
-    def dashboard_summary(self, recent_limit: int = 12) -> dict[str, Any]:
+    def dashboard_summary(self, recent_limit: int = 50) -> dict[str, Any]:
         active_by_tier = {
             row["quality_tier"]: int(row["count"])
             for row in self.connection.execute(

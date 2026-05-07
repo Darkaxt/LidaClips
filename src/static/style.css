@@ -63,6 +63,14 @@
     box-shadow: 0 0 0 2px rgba(35, 166, 160, 0.18);
 }
 
+.dashboard-page {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-height: calc(100vh - 66px);
+    padding: 0.85rem 0.85rem 1rem;
+}
+
 .dashboard-overview {
     display: grid;
     gap: 0.75rem;
@@ -100,8 +108,42 @@
     box-shadow: 0 8px 28px rgba(21, 31, 42, 0.08);
 }
 
-.compact-card {
-    min-height: 260px;
+.dashboard-workspace {
+    display: grid;
+    flex: 1;
+    gap: 0.75rem;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 26vw);
+    min-height: calc(100vh - 156px);
+}
+
+.dashboard-primary,
+.dashboard-primary .tool-card,
+.dashboard-primary .card-body,
+.dashboard-rail,
+.rail-card .card-body {
+    min-height: 0;
+}
+
+.dashboard-primary .tool-card,
+.dashboard-primary .card-body {
+    height: 100%;
+}
+
+.dashboard-primary .card-body,
+.issues-card .card-body,
+.sync-guardrails .card-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.dashboard-rail {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.rail-card {
+    min-height: 0;
 }
 
 .panel-title {
@@ -118,8 +160,52 @@
 }
 
 .recent-table-wrap {
-    max-height: 260px;
-    overflow-y: auto;
+    flex: 1;
+    height: 100%;
+    max-height: none;
+    min-height: 0;
+    overflow: auto;
+}
+
+#recent-clips-table {
+    table-layout: fixed;
+}
+
+#recent-clips-table thead th {
+    background: #f3f7fa;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+#recent-clips-table td,
+#recent-clips-table th {
+    overflow-wrap: anywhere;
+    vertical-align: middle;
+}
+
+.clip-track-col {
+    width: 34%;
+}
+
+.clip-album-col {
+    width: 18%;
+}
+
+.clip-tier-col {
+    width: 10%;
+}
+
+.clip-score-col {
+    width: 7%;
+}
+
+.clip-added-col {
+    width: 12%;
+}
+
+.clip-file-col {
+    width: 19%;
 }
 
 .tier-official {
@@ -135,7 +221,8 @@
 .issue-list {
     display: grid;
     gap: 0.55rem;
-    max-height: 214px;
+    max-height: none;
+    min-height: 0;
     overflow-y: auto;
 }
 
@@ -167,6 +254,34 @@
     color: #647281;
 }
 
+.guardrail-list {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.guardrail-list div {
+    align-items: baseline;
+    border-top: 1px solid #dbe4ea;
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: 84px minmax(0, 1fr);
+    padding-top: 0.5rem;
+}
+
+.guardrail-list dt {
+    color: #647281;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin: 0;
+    text-transform: uppercase;
+}
+
+.guardrail-list dd {
+    font-weight: 700;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
 [data-bs-theme="dark"] .app-shell {
     background: #101516;
     color: #f1f5f7;
@@ -196,8 +311,16 @@
     border-color: #293437;
 }
 
+[data-bs-theme="dark"] #recent-clips-table thead th {
+    background: #1f272a;
+}
+
 [data-bs-theme="dark"] .issue-item strong {
     color: #f1f5f7;
+}
+
+[data-bs-theme="dark"] .guardrail-list div {
+    border-color: #293437;
 }
 
 .scrollable {
@@ -248,5 +371,58 @@
 
     .summary-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media screen and (max-width: 1080px) {
+    .dashboard-workspace {
+        grid-template-columns: 1fr;
+        min-height: auto;
+    }
+
+    .dashboard-primary .tool-card {
+        height: 64vh;
+    }
+
+    .dashboard-rail {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto;
+    }
+}
+
+@media screen and (max-width: 760px) {
+    .dashboard-page {
+        padding: 0.65rem;
+    }
+
+    .dashboard-primary .tool-card {
+        height: 58vh;
+    }
+
+    .dashboard-rail {
+        grid-template-columns: 1fr;
+    }
+
+    .clip-album-col,
+    #recent-clips-table td:nth-child(2),
+    .clip-file-col,
+    #recent-clips-table td:nth-child(6) {
+        display: none;
+    }
+
+    .clip-track-col {
+        width: 46%;
+    }
+
+    .clip-tier-col {
+        width: 18%;
+    }
+
+    .clip-score-col {
+        width: 12%;
+    }
+
+    .clip-added-col {
+        width: 24%;
     }
 }

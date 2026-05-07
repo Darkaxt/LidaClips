@@ -46,8 +46,8 @@
     </div>
   </div>
 
-  <div class="container-fluid mt-3 card-container">
-    <section class="dashboard-overview mb-3">
+  <main class="container-fluid dashboard-page">
+    <section class="dashboard-overview">
       <div class="stat-tile">
         <span>Active Clips</span>
         <strong id="dashboard-active-clips">0</strong>
@@ -70,9 +70,9 @@
       </div>
     </section>
 
-    <div class="row g-3 mb-3">
-      <div class="col-lg-8 col-12">
-        <div class="card tool-card compact-card">
+    <section class="dashboard-workspace">
+      <article class="dashboard-primary">
+        <div class="card tool-card">
           <div class="card-body">
             <div class="section-heading">
               <h2 class="panel-title mb-0">Recent Clips</h2>
@@ -82,12 +82,12 @@
               <table class="table table-striped align-middle mb-0" id="recent-clips-table">
                 <thead>
                   <tr>
-                    <th>Track</th>
-                    <th>Album</th>
-                    <th class="text-center">Tier</th>
-                    <th class="text-center">Score</th>
-                    <th>Added</th>
-                    <th>File</th>
+                    <th class="clip-track-col">Track</th>
+                    <th class="clip-album-col">Album</th>
+                    <th class="clip-tier-col text-center">Tier</th>
+                    <th class="clip-score-col text-center">Score</th>
+                    <th class="clip-added-col">Added</th>
+                    <th class="clip-file-col">File</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -99,9 +99,10 @@
             </div>
           </div>
         </div>
-      </div>
-      <div class="col-lg-4 col-12">
-        <div class="card tool-card compact-card">
+      </article>
+
+      <aside class="dashboard-rail">
+        <div class="card tool-card rail-card issues-card">
           <div class="card-body">
             <div class="section-heading">
               <h2 class="panel-title mb-0">Recent Issues</h2>
@@ -112,9 +113,36 @@
             </div>
           </div>
         </div>
-      </div>
-    </div>
-  </div>
+
+        <div class="card tool-card rail-card sync-guardrails">
+          <div class="card-body">
+            <div class="section-heading">
+              <h2 class="panel-title mb-0">Sync Guardrails</h2>
+              <span>current rollout</span>
+            </div>
+            <dl class="guardrail-list mb-0">
+              <div>
+                <dt>Scope</dt>
+                <dd id="dashboard-scope">Loading</dd>
+              </div>
+              <div>
+                <dt>Schedule</dt>
+                <dd id="dashboard-schedule-summary">Loading</dd>
+              </div>
+              <div>
+                <dt>Batch</dt>
+                <dd id="dashboard-batch-size">Loading</dd>
+              </div>
+              <div>
+                <dt>Downloads</dt>
+                <dd id="dashboard-download-state">Loading</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </aside>
+    </section>
+  </main>
 
   <div class="modal fade" id="config-modal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel"
     aria-hidden="true">

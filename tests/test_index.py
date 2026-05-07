@@ -210,6 +210,28 @@ class IndexMigrationTests(unittest.TestCase):
 
         self.assertFalse(index.get_sync_paused())
 
+    def test_dashboard_summary_returns_enough_recent_clips_for_full_page_table(self):
+        index = ClipIndex(":memory:")
+
+        for lidarr_track_id in range(1, 21):
+            target = self.make_target(lidarr_track_id=lidarr_track_id, title=f"Song {lidarr_track_id}")
+            index.upsert_track(target)
+            index.record_clip(
+                lidarr_track_id=lidarr_track_id,
+                video_id=f"video-{lidarr_track_id}",
+                source_url=f"https://example.test/{lidarr_track_id}",
+                title=f"Song {lidarr_track_id}",
+                file_path=f"/clips/song-{lidarr_track_id}.mp4",
+                mime_type="video/mp4",
+                score=90.0,
+                evidence={"quality_tier": "official"},
+                quality_tier="official",
+            )
+
+        summary = index.dashboard_summary()
+
+        self.assertEqual(len(summary["recent_clips"]), 20)
+
 
 if __name__ == "__main__":
     unittest.main()

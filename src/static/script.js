@@ -17,6 +17,10 @@ const dashboardFailures = document.getElementById("dashboard-failures");
 const dashboardRollout = document.getElementById("dashboard-rollout");
 const dashboardLastUpdated = document.getElementById("dashboard-last-updated");
 const dashboardTrackedTracks = document.getElementById("dashboard-tracked-tracks");
+const dashboardScope = document.getElementById("dashboard-scope");
+const dashboardScheduleSummary = document.getElementById("dashboard-schedule-summary");
+const dashboardBatchSize = document.getElementById("dashboard-batch-size");
+const dashboardDownloadState = document.getElementById("dashboard-download-state");
 const recentClipsTable = document.getElementById("recent-clips-table").getElementsByTagName("tbody")[0];
 const recentFailuresList = document.getElementById("recent-failures-list");
 
@@ -67,6 +71,15 @@ function renderRollout() {
     dashboardRollout.textContent = `${scope}, ${state}`;
 }
 
+function renderGuardrails(settings) {
+    const allowlist = settings.sync_artist_allowlist || [];
+    dashboardScope.textContent = allowlist.length ? allowlist.join(", ") : "Global library";
+    const schedule = settings.sync_schedule || [];
+    dashboardScheduleSummary.textContent = schedule.length ? schedule.map((hour) => `${hour}:00`).join(", ") : "Manual only";
+    dashboardBatchSize.textContent = `${settings.max_targets_per_run ?? 0} targets per run`;
+    dashboardDownloadState.textContent = settings.download_enabled ? "Enabled" : "Dry run";
+}
+
 function renderControl(control) {
     if (!control) {
         return;
@@ -106,16 +119,24 @@ function renderDashboard(dashboard) {
     } else {
         clips.forEach((clip) => {
             const row = recentClipsTable.insertRow();
-            row.insertCell(0).textContent = `${clip.artist} - ${clip.track}`;
-            row.insertCell(1).textContent = clip.album || "";
+            const trackCell = row.insertCell(0);
+            trackCell.textContent = `${clip.artist} - ${clip.track}`;
+            trackCell.className = "clip-track-cell";
+            const albumCell = row.insertCell(1);
+            albumCell.textContent = clip.album || "";
+            albumCell.className = "clip-album-cell";
             const tierCell = row.insertCell(2);
             tierCell.textContent = tierLabel(clip.quality_tier);
             tierCell.classList.add("text-center", `tier-${clip.quality_tier || "unknown"}`);
             const scoreCell = row.insertCell(3);
             scoreCell.textContent = formatScore(clip.score);
             scoreCell.classList.add("text-center");
-            row.insertCell(4).textContent = formatTimestamp(clip.created_at);
-            row.insertCell(5).textContent = clip.file_name || "";
+            const addedCell = row.insertCell(4);
+            addedCell.textContent = formatTimestamp(clip.created_at);
+            addedCell.className = "clip-added-cell";
+            const fileCell = row.insertCell(5);
+            fileCell.textContent = clip.file_name || "";
+            fileCell.className = "clip-file-cell";
         });
     }
 
@@ -161,6 +182,7 @@ socket.on("settings_loaded", (settings) => {
     syncArtistAllowlist.value = (settings.sync_artist_allowlist || []).join(", ");
     maxTargetsPerRun.value = settings.max_targets_per_run ?? "";
     downloadEnabled.value = settings.download_enabled ? "true" : "false";
+    renderGuardrails(settings);
     renderRollout();
 });
 
