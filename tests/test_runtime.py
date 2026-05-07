@@ -23,6 +23,25 @@ except ModuleNotFoundError:
         def emit(self, event, payload=None):
             self.emitted.append((event, payload))
 
+        def test_client(self, _app):
+            socketio = self
+
+            class FakeSocketClient:
+                def emit(self, event, payload=None):
+                    handler = socketio.handlers[event]
+                    if payload is None:
+                        handler()
+                    else:
+                        handler(payload)
+
+                def get_received(self):
+                    return [
+                        {"name": event, "args": [] if payload is None else [payload]}
+                        for event, payload in socketio.emitted
+                    ]
+
+            return FakeSocketClient()
+
     fake_socketio.SocketIO = FakeSocketIO
     sys.modules["flask_socketio"] = fake_socketio
 
@@ -85,9 +104,13 @@ class RuntimeControlTests(unittest.TestCase):
 
         self.assertNotIn("api_key", runtime._settings_payload())
 
-        runtime.socketio.handlers["load_api_key"]()
+        client = runtime.socketio.test_client(runtime.app)
+        client.emit("load_api_key")
 
-        self.assertIn(("api_key_loaded", {"api_key": "client-secret"}), runtime.socketio.emitted)
+        self.assertIn(
+            {"name": "api_key_loaded", "args": [{"api_key": "client-secret"}]},
+            client.get_received(),
+        )
 
 
 if __name__ == "__main__":
