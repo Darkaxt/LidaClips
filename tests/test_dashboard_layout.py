@@ -20,6 +20,16 @@ class DashboardLayoutTests(unittest.TestCase):
         self.assertIn(".recent-table-wrap", styles)
         self.assertIn("height: 100%", styles)
 
+    def test_settings_modal_has_on_demand_api_key_reveal(self):
+        template = (PROJECT_ROOT / "src" / "templates" / "base.html").read_text()
+        script = (PROJECT_ROOT / "src" / "static" / "script.js").read_text()
+
+        self.assertIn('id="client-api-key"', template)
+        self.assertIn('id="api-key-reveal-button"', template)
+        self.assertIn('id="api-key-copy-button"', template)
+        self.assertIn('socket.emit("load_api_key")', script)
+        self.assertIn('socket.on("api_key_loaded"', script)
+
 
 if __name__ == "__main__":
     unittest.main()

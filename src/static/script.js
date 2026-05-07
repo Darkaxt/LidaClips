@@ -9,6 +9,9 @@ const syncSchedule = document.getElementById("sync-schedule");
 const syncArtistAllowlist = document.getElementById("sync-artist-allowlist");
 const maxTargetsPerRun = document.getElementById("max-targets-per-run");
 const downloadEnabled = document.getElementById("download-enabled");
+const clientApiKey = document.getElementById("client-api-key");
+const apiKeyRevealButton = document.getElementById("api-key-reveal-button");
+const apiKeyCopyButton = document.getElementById("api-key-copy-button");
 
 const dashboardActiveClips = document.getElementById("dashboard-active-clips");
 const dashboardOfficialClips = document.getElementById("dashboard-official-clips");
@@ -169,7 +172,30 @@ syncControlButton.addEventListener("click", () => {
 });
 
 document.getElementById("config-modal").addEventListener("show.bs.modal", () => {
+    clientApiKey.type = "password";
+    clientApiKey.value = "Hidden until revealed";
+    apiKeyRevealButton.disabled = false;
+    apiKeyCopyButton.disabled = true;
     socket.emit("load_settings");
+});
+
+apiKeyRevealButton.addEventListener("click", () => {
+    apiKeyRevealButton.disabled = true;
+    socket.emit("load_api_key");
+});
+
+apiKeyCopyButton.addEventListener("click", async () => {
+    if (!clientApiKey.value || clientApiKey.type === "password") {
+        return;
+    }
+    try {
+        await navigator.clipboard.writeText(clientApiKey.value);
+        showToast("API key copied", "Use it as X-Api-Key, apiKey, or api_key for LidaClips clients.");
+    } catch (_error) {
+        clientApiKey.select();
+        document.execCommand("copy");
+        showToast("API key copied", "Use it as X-Api-Key, apiKey, or api_key for LidaClips clients.");
+    }
 });
 
 socket.on("settings_loaded", (settings) => {
@@ -197,6 +223,13 @@ socket.on("dashboard_loaded", (dashboard) => {
 
 socket.on("control_loaded", (control) => {
     renderControl(control);
+});
+
+socket.on("api_key_loaded", (payload) => {
+    clientApiKey.type = "text";
+    clientApiKey.value = (payload && payload.api_key) || "";
+    apiKeyRevealButton.disabled = false;
+    apiKeyCopyButton.disabled = !clientApiKey.value;
 });
 
 socket.on("new_toast_msg", (data) => {

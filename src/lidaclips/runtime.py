@@ -54,6 +54,10 @@ class Runtime:
         def load_settings():
             self.socketio.emit("settings_loaded", self._settings_payload())
 
+        @self.socketio.on("load_api_key")
+        def load_api_key():
+            self.socketio.emit("api_key_loaded", {"api_key": self.settings.api_key})
+
         @self.socketio.on("load_dashboard")
         def load_dashboard():
             self.socketio.emit("dashboard_loaded", self._dashboard_payload())

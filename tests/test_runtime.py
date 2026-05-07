@@ -47,7 +47,7 @@ class RuntimeControlTests(unittest.TestCase):
     def make_runtime(self):
         index = ClipIndex(":memory:")
         service = FakeRuntimeService()
-        settings = Settings(sync_schedule=[])
+        settings = Settings(api_key="client-secret", sync_schedule=[])
         runtime = Runtime(settings, index, service)
         return runtime, index, service
 
@@ -75,10 +75,19 @@ class RuntimeControlTests(unittest.TestCase):
         runtime, _index, _service = self.make_runtime()
         runtime.sync_status = "running"
 
-        response = runtime.app.test_client().get("/api/v1/control")
+        response = runtime.app.test_client().get("/api/v1/control", headers={"X-Api-Key": "client-secret"})
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.get_json()["sync_running"])
+
+    def test_settings_payload_hides_api_key_until_requested(self):
+        runtime, _index, _service = self.make_runtime()
+
+        self.assertNotIn("api_key", runtime._settings_payload())
+
+        runtime.socketio.handlers["load_api_key"]()
+
+        self.assertIn(("api_key_loaded", {"api_key": "client-secret"}), runtime.socketio.emitted)
 
 
 if __name__ == "__main__":
