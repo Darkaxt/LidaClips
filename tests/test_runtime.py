@@ -107,9 +107,12 @@ class RuntimeControlTests(unittest.TestCase):
         client = runtime.socketio.test_client(runtime.app)
         client.emit("load_api_key")
 
-        self.assertIn(
-            {"name": "api_key_loaded", "args": [{"api_key": "client-secret"}]},
-            client.get_received(),
+        self.assertTrue(
+            any(
+                event.get("name") == "api_key_loaded"
+                and event.get("args") == [{"api_key": "client-secret"}]
+                for event in client.get_received()
+            )
         )
 
 
