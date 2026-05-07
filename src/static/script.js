@@ -11,6 +11,7 @@ const maxTargetsPerRun = document.getElementById("max-targets-per-run");
 const downloadEnabled = document.getElementById("download-enabled");
 const clientApiKey = document.getElementById("client-api-key");
 const apiKeyRevealButton = document.getElementById("api-key-reveal-button");
+const apiKeyRevealIcon = document.getElementById("api-key-reveal-icon");
 const apiKeyCopyButton = document.getElementById("api-key-copy-button");
 
 const dashboardActiveClips = document.getElementById("dashboard-active-clips");
@@ -30,6 +31,8 @@ const recentFailuresList = document.getElementById("recent-failures-list");
 const socket = io();
 let currentSettings = null;
 let currentControl = { sync_paused: false, sync_running: false };
+let currentApiKey = "";
+let pendingApiKeyAction = null;
 
 function formatScore(score) {
     if (score === null || score === undefined || score === "") {
@@ -166,36 +169,92 @@ function renderDashboard(dashboard) {
     }
 }
 
+function resetApiKeyControls() {
+    currentApiKey = "";
+    pendingApiKeyAction = null;
+    hideApiKey();
+    apiKeyRevealButton.disabled = false;
+    apiKeyCopyButton.disabled = false;
+}
+
+function hideApiKey() {
+    clientApiKey.type = "password";
+    clientApiKey.value = "Hidden until revealed";
+    apiKeyRevealIcon.classList.add("fa-eye");
+    apiKeyRevealIcon.classList.remove("fa-eye-slash");
+    apiKeyRevealButton.title = "Reveal API key";
+    apiKeyRevealButton.setAttribute("aria-label", "Reveal API key");
+}
+
+function showApiKey() {
+    clientApiKey.type = "text";
+    clientApiKey.value = currentApiKey;
+    apiKeyRevealIcon.classList.remove("fa-eye");
+    apiKeyRevealIcon.classList.add("fa-eye-slash");
+    apiKeyRevealButton.title = "Hide API key";
+    apiKeyRevealButton.setAttribute("aria-label", "Hide API key");
+}
+
+function requestApiKey(action) {
+    pendingApiKeyAction = action;
+    if (action === "copy") {
+        apiKeyCopyButton.disabled = true;
+    }
+    if (action === "reveal") {
+        apiKeyRevealButton.disabled = true;
+    }
+    socket.emit("load_api_key");
+}
+
+async function copyApiKeyToClipboard(apiKey) {
+    if (!apiKey) {
+        showToast("API key unavailable", "No LidaClips client API key is configured.");
+        return;
+    }
+    try {
+        await navigator.clipboard.writeText(apiKey);
+    } catch (_error) {
+        const temporaryInput = document.createElement("textarea");
+        temporaryInput.value = apiKey;
+        temporaryInput.setAttribute("readonly", "");
+        temporaryInput.style.position = "fixed";
+        temporaryInput.style.left = "-9999px";
+        document.body.appendChild(temporaryInput);
+        temporaryInput.select();
+        document.execCommand("copy");
+        temporaryInput.remove();
+    }
+    showToast("API key copied", "Use it as X-Api-Key, apiKey, or api_key for LidaClips clients.");
+}
+
 syncControlButton.addEventListener("click", () => {
     syncControlButton.disabled = true;
     socket.emit("set_sync_paused", { sync_paused: !currentControl.sync_paused });
 });
 
 document.getElementById("config-modal").addEventListener("show.bs.modal", () => {
-    clientApiKey.type = "password";
-    clientApiKey.value = "Hidden until revealed";
-    apiKeyRevealButton.disabled = false;
-    apiKeyCopyButton.disabled = true;
+    resetApiKeyControls();
     socket.emit("load_settings");
 });
 
 apiKeyRevealButton.addEventListener("click", () => {
-    apiKeyRevealButton.disabled = true;
-    socket.emit("load_api_key");
+    if (clientApiKey.type === "text") {
+        hideApiKey();
+        return;
+    }
+    if (currentApiKey) {
+        showApiKey();
+        return;
+    }
+    requestApiKey("reveal");
 });
 
 apiKeyCopyButton.addEventListener("click", async () => {
-    if (!clientApiKey.value || clientApiKey.type === "password") {
+    if (!currentApiKey) {
+        requestApiKey("copy");
         return;
     }
-    try {
-        await navigator.clipboard.writeText(clientApiKey.value);
-        showToast("API key copied", "Use it as X-Api-Key, apiKey, or api_key for LidaClips clients.");
-    } catch (_error) {
-        clientApiKey.select();
-        document.execCommand("copy");
-        showToast("API key copied", "Use it as X-Api-Key, apiKey, or api_key for LidaClips clients.");
-    }
+    await copyApiKeyToClipboard(currentApiKey);
 });
 
 socket.on("settings_loaded", (settings) => {
@@ -226,10 +285,18 @@ socket.on("control_loaded", (control) => {
 });
 
 socket.on("api_key_loaded", (payload) => {
-    clientApiKey.type = "text";
-    clientApiKey.value = (payload && payload.api_key) || "";
+    currentApiKey = (payload && payload.api_key) || "";
+    const action = pendingApiKeyAction;
+    pendingApiKeyAction = null;
     apiKeyRevealButton.disabled = false;
-    apiKeyCopyButton.disabled = !clientApiKey.value;
+    apiKeyCopyButton.disabled = false;
+    if (action === "copy") {
+        copyApiKeyToClipboard(currentApiKey);
+        return;
+    }
+    if (action === "reveal") {
+        showApiKey();
+    }
 });
 
 socket.on("new_toast_msg", (data) => {

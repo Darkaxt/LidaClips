@@ -27,8 +27,15 @@ class DashboardLayoutTests(unittest.TestCase):
         self.assertIn('id="client-api-key"', template)
         self.assertIn('id="api-key-reveal-button"', template)
         self.assertIn('id="api-key-copy-button"', template)
+        self.assertNotIn('id="api-key-copy-button"\n                title="Copy API key" aria-label="Copy API key" disabled', template)
         self.assertIn('socket.emit("load_api_key")', script)
         self.assertIn('socket.on("api_key_loaded"', script)
+        self.assertIn('requestApiKey("copy")', script)
+        self.assertIn('requestApiKey("reveal")', script)
+        self.assertIn("pendingApiKeyAction = action", script)
+        self.assertIn("copyApiKeyToClipboard(currentApiKey)", script)
+        self.assertIn('hideApiKey()', script)
+        self.assertIn('fa-eye-slash', script)
 
 
 if __name__ == "__main__":
