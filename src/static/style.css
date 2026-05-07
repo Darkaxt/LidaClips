@@ -43,8 +43,24 @@
     background: rgba(255, 255, 255, 0.12);
 }
 
-.cards-row {
-    min-height: calc(100vh - 86px);
+.top-actions {
+    align-items: center;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.sync-control-button {
+    border-color: rgba(35, 166, 160, 0.7);
+    color: #c8fff8;
+}
+
+.sync-control-button.sync-paused {
+    border-color: rgba(255, 184, 77, 0.86);
+    color: #ffd99a;
+}
+
+.sync-control-button.sync-running {
+    box-shadow: 0 0 0 2px rgba(35, 166, 160, 0.18);
 }
 
 .dashboard-overview {

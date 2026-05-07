@@ -32,10 +32,16 @@
           <img src="{{url_for('static', filename='logo.png')}}" alt="Logo" class="brand-logo">
           <h1 class="title my-1" id="return-to-top">LidaClips</h1>
         </div>
-        <button class="icon-button" id="settings-button" data-bs-toggle="modal"
-          data-bs-target="#config-modal">
-          <i class="fa fa-gear"></i>
-        </button>
+        <div class="top-actions">
+          <button class="icon-button sync-control-button" id="sync-control-button" title="Pause sync"
+            aria-label="Pause sync">
+            <i class="fa fa-pause" id="sync-control-icon"></i>
+          </button>
+          <button class="icon-button" id="settings-button" data-bs-toggle="modal"
+            data-bs-target="#config-modal" title="Settings" aria-label="Settings">
+            <i class="fa fa-gear"></i>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -80,12 +86,13 @@
                     <th>Album</th>
                     <th class="text-center">Tier</th>
                     <th class="text-center">Score</th>
+                    <th>Added</th>
                     <th>File</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr class="empty-row">
-                    <td colspan="5">No clips have been indexed yet.</td>
+                    <td colspan="6">No clips have been indexed yet.</td>
                   </tr>
                 </tbody>
               </table>
@@ -102,97 +109,6 @@
             </div>
             <div class="issue-list" id="recent-failures-list">
               <div class="empty-state">No recent failures.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="row cards-row g-3">
-      <div class="col-md-6 col-12 mb-3">
-        <div class="card tool-card h-100" id="targets-card">
-          <div class="card-body d-flex flex-column">
-            <div class="row">
-              <div class="col-auto">
-                <img src="{{url_for('static', filename='lidarr.svg')}}" alt="Logo" class="logo">
-              </div>
-              <div class="col-auto d-flex align-items-center justify-content-start p-0">
-                <h2 class="panel-title mb-0">Library Targets</h2>
-              </div>
-            </div>
-            <div class="btn-group mt-1">
-              <button class="btn btn-primary w-100" id="refresh-targets-btn">
-                <span class="spinner-border spinner-border-sm d-none" id="targets-spinner" role="status"
-                  aria-hidden="true"></span>
-                Refresh
-              </button>
-            </div>
-            <div class="container non-scrollable my-1 p-0" id="select-all">
-              <div id="targets-progress-status-bar" class="progress">
-                <div class="progress-bar-striped bg-success" role="progressbar" aria-valuenow="100" aria-valuemin="0"
-                  aria-valuemax="100"></div>
-              </div>
-            </div>
-            <div class="container scrollable p-0">
-              <div class="table">
-                <table class="table table-striped" id="targets-table">
-                  <thead class="thead-sticky">
-                    <tr>
-                      <th>Track</th>
-                      <th>Album</th>
-                      <th class="text-center">Duration</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-6 col-12 mb-3">
-        <div class="card tool-card h-100" id="sync-card">
-          <div class="card-body d-flex flex-column">
-            <div class="row">
-              <div class="col-auto">
-                <img src="{{url_for('static', filename='yt_dlp.png')}}" alt="Logo" class="logo">
-              </div>
-              <div class="col-auto d-flex align-items-center justify-content-start p-0">
-                <h2 class="panel-title mb-0">Clip Sync</h2>
-              </div>
-            </div>
-            <div class="btn-group mt-1">
-              <button class="btn btn-primary w-100 " id="start-sync-btn">
-                <span class="spinner-border spinner-border-sm d-none" id="sync-spinner" role="status"
-                  aria-hidden="true"></span>
-                Sync</button>
-            </div>
-            <div class="container non-scrollable my-1 p-0" id="progress-bar">
-              <div id="sync-progress-status-bar" class="progress">
-                <div class="progress-bar-striped bg-success" role="progressbar" aria-valuenow="100" aria-valuemin="0"
-                  aria-valuemax="100"></div>
-              </div>
-            </div>
-            <div class="summary-grid my-2" id="summary-grid">
-              <div><span>Targets</span><strong id="summary-targets">0</strong></div>
-              <div><span>Downloaded</span><strong id="summary-downloaded">0</strong></div>
-              <div><span>No Match</span><strong id="summary-no-match">0</strong></div>
-              <div><span>Errors</span><strong id="summary-errors">0</strong></div>
-            </div>
-            <div class="container scrollable p-0">
-              <div class="table">
-                <table class="table table-striped" id="clips-table">
-                  <thead class="thead-sticky">
-                    <tr>
-                      <th>Metric</th>
-                      <th class="text-center">Value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                  </tbody>
-                </table>
-              </div>
             </div>
           </div>
         </div>

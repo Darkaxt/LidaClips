@@ -98,6 +98,7 @@ class ApiTests(unittest.TestCase):
         unauthorized = self.client.get("/api/v1/dashboard")
         self.assertEqual(unauthorized.status_code, 401)
 
+        self.index.set_sync_paused(True)
         response = self.client.get("/api/v1/dashboard", headers=self.headers())
         payload = response.get_json()
 
@@ -105,8 +106,32 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["active_clips"], 1)
         self.assertEqual(payload["official_clips"], 1)
         self.assertEqual(payload["fallback_clips"], 0)
+        self.assertTrue(payload["sync_paused"])
+        self.assertIn("created_at", payload["recent_clips"][0])
         self.assertEqual(payload["recent_clips"][0]["file_name"], "clip.mp4")
         self.assertNotIn("file_path", payload["recent_clips"][0])
+
+    def test_control_requires_api_key_and_toggles_sync_pause(self):
+        unauthorized = self.client.get("/api/v1/control")
+        self.assertEqual(unauthorized.status_code, 401)
+
+        initial = self.client.get("/api/v1/control", headers=self.headers())
+        self.assertEqual(initial.status_code, 200)
+        self.assertFalse(initial.get_json()["sync_paused"])
+        self.assertFalse(initial.get_json()["sync_running"])
+
+        paused = self.client.post("/api/v1/control", json={"sync_paused": True}, headers=self.headers())
+        self.assertEqual(paused.status_code, 200)
+        self.assertTrue(paused.get_json()["sync_paused"])
+        self.assertTrue(self.index.get_sync_paused())
+
+        invalid = self.client.post("/api/v1/control", json={"sync_paused": "yes"}, headers=self.headers())
+        self.assertEqual(invalid.status_code, 400)
+
+        resumed = self.client.post("/api/v1/control", json={"sync_paused": False}, headers=self.headers())
+        self.assertEqual(resumed.status_code, 200)
+        self.assertFalse(resumed.get_json()["sync_paused"])
+        self.assertFalse(self.index.get_sync_paused())
 
     def test_navidrome_lookup_returns_clip(self):
         response = self.client.get("/api/v1/navidrome/nav-song-42/clip", headers=self.headers())

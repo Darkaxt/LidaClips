@@ -155,6 +155,8 @@ Custom clip API:
 - `GET /api/v1/ping`
 - `GET /api/v1/health`
 - `GET /api/v1/dashboard`
+- `GET /api/v1/control`
+- `POST /api/v1/control`
 - `GET /api/v1/clips?artist=&album=&track=`
 - `GET /api/v1/tracks/{lidarr_track_id}/clip`
 - `GET /api/v1/navidrome/{song_id}/clip`

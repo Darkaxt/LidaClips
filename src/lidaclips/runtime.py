@@ -25,6 +25,7 @@ class Runtime:
         self.service = service
         self.logger = logging.getLogger(__name__)
         self.app = create_app(index, api_key=settings.api_key, service=service)
+        self.app.config["LIDACLIPS_RUNTIME"] = self
         self.socketio = SocketIO(
             self.app,
             async_mode="threading",
@@ -56,6 +57,17 @@ class Runtime:
         @self.socketio.on("load_dashboard")
         def load_dashboard():
             self.socketio.emit("dashboard_loaded", self._dashboard_payload())
+
+        @self.socketio.on("load_control")
+        def load_control():
+            self.socketio.emit("control_loaded", self._control_payload())
+
+        @self.socketio.on("set_sync_paused")
+        def set_sync_paused(payload):
+            paused = bool((payload or {}).get("sync_paused"))
+            self.index.set_sync_paused(paused)
+            self.socketio.emit("control_loaded", self._control_payload())
+            self._emit_state()
 
         @self.socketio.on("refresh_targets")
         def refresh_targets():
@@ -90,6 +102,11 @@ class Runtime:
 
     def sync_once(self):
         try:
+            if self.index.get_sync_paused():
+                self.sync_status = "paused"
+                self.last_summary = {"skipped_paused": 1}
+                self._emit_state()
+                return
             self.sync_status = "running"
             self._emit_state()
             self.last_summary = self.service.sync_once()
@@ -123,11 +140,15 @@ class Runtime:
                 "targets": self.last_targets,
                 "summary": self.last_summary,
                 "dashboard": self._dashboard_payload(),
+                "control": self._control_payload(),
             },
         )
 
     def _dashboard_payload(self):
         return public_dashboard(self.index.dashboard_summary())
+
+    def _control_payload(self):
+        return {"sync_paused": self.index.get_sync_paused(), "sync_running": self.sync_status == "running"}
 
     def _settings_payload(self):
         return {

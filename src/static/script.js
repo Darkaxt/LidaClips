@@ -1,12 +1,5 @@
-const refreshTargetsButton = document.getElementById("refresh-targets-btn");
-const targetsSpinner = document.getElementById("targets-spinner");
-const targetsTable = document.getElementById("targets-table").getElementsByTagName("tbody")[0];
-const targetsProgressBar = document.querySelector("#targets-progress-status-bar .progress-bar-striped");
-
-const startSyncButton = document.getElementById("start-sync-btn");
-const syncSpinner = document.getElementById("sync-spinner");
-const syncProgressBar = document.querySelector("#sync-progress-status-bar .progress-bar-striped");
-const clipsTable = document.getElementById("clips-table").getElementsByTagName("tbody")[0];
+const syncControlButton = document.getElementById("sync-control-button");
+const syncControlIcon = document.getElementById("sync-control-icon");
 
 const lidarrAddress = document.getElementById("lidarr-address");
 const navidromeAddress = document.getElementById("navidrome-address");
@@ -16,11 +9,6 @@ const syncSchedule = document.getElementById("sync-schedule");
 const syncArtistAllowlist = document.getElementById("sync-artist-allowlist");
 const maxTargetsPerRun = document.getElementById("max-targets-per-run");
 const downloadEnabled = document.getElementById("download-enabled");
-
-const summaryTargets = document.getElementById("summary-targets");
-const summaryDownloaded = document.getElementById("summary-downloaded");
-const summaryNoMatch = document.getElementById("summary-no-match");
-const summaryErrors = document.getElementById("summary-errors");
 
 const dashboardActiveClips = document.getElementById("dashboard-active-clips");
 const dashboardOfficialClips = document.getElementById("dashboard-official-clips");
@@ -33,38 +21,30 @@ const recentClipsTable = document.getElementById("recent-clips-table").getElemen
 const recentFailuresList = document.getElementById("recent-failures-list");
 
 const socket = io();
-
-function setProgressState(progressBar, status) {
-    progressBar.classList.remove("bg-primary", "bg-danger", "bg-dark", "bg-warning", "bg-success");
-    if (status === "busy" || status === "running") {
-        progressBar.classList.add("bg-success", "progress-bar-animated");
-        progressBar.style.width = "66%";
-    } else if (status === "error") {
-        progressBar.classList.add("bg-danger");
-        progressBar.style.width = "100%";
-    } else if (status === "complete") {
-        progressBar.classList.add("bg-dark");
-        progressBar.style.width = "100%";
-    } else {
-        progressBar.classList.add("bg-primary");
-        progressBar.style.width = "0%";
-    }
-}
-
-function formatDuration(seconds) {
-    if (!seconds) {
-        return "";
-    }
-    const minutes = Math.floor(seconds / 60);
-    const remainder = String(seconds % 60).padStart(2, "0");
-    return `${minutes}:${remainder}`;
-}
+let currentSettings = null;
+let currentControl = { sync_paused: false, sync_running: false };
 
 function formatScore(score) {
     if (score === null || score === undefined || score === "") {
         return "";
     }
     return Number(score).toFixed(0);
+}
+
+function formatTimestamp(value) {
+    if (!value) {
+        return "";
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+    return date.toLocaleString([], {
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
 }
 
 function tierLabel(tier) {
@@ -75,6 +55,33 @@ function tierLabel(tier) {
         return "Fallback";
     }
     return tier || "Unknown";
+}
+
+function renderRollout() {
+    if (!currentSettings) {
+        dashboardRollout.textContent = currentControl.sync_paused ? "Paused" : "Loading";
+        return;
+    }
+    const scope = (currentSettings.sync_artist_allowlist || []).length ? "Allowlist" : "Global";
+    const state = currentControl.sync_paused ? "paused" : (currentSettings.download_enabled ? "enabled" : "dry run");
+    dashboardRollout.textContent = `${scope}, ${state}`;
+}
+
+function renderControl(control) {
+    if (!control) {
+        return;
+    }
+    currentControl = control;
+    const paused = Boolean(control.sync_paused);
+    const running = Boolean(control.sync_running);
+    syncControlButton.classList.toggle("sync-paused", paused);
+    syncControlButton.classList.toggle("sync-running", running);
+    syncControlButton.disabled = false;
+    syncControlIcon.classList.toggle("fa-play", paused);
+    syncControlIcon.classList.toggle("fa-pause", !paused);
+    syncControlButton.title = paused ? "Resume sync" : (running ? "Pause after current sync" : "Pause sync");
+    syncControlButton.setAttribute("aria-label", syncControlButton.title);
+    renderRollout();
 }
 
 function renderDashboard(dashboard) {
@@ -94,7 +101,7 @@ function renderDashboard(dashboard) {
         const row = recentClipsTable.insertRow();
         row.classList.add("empty-row");
         const cell = row.insertCell(0);
-        cell.colSpan = 5;
+        cell.colSpan = 6;
         cell.textContent = "No clips have been indexed yet.";
     } else {
         clips.forEach((clip) => {
@@ -107,7 +114,8 @@ function renderDashboard(dashboard) {
             const scoreCell = row.insertCell(3);
             scoreCell.textContent = formatScore(clip.score);
             scoreCell.classList.add("text-center");
-            row.insertCell(4).textContent = clip.file_name || "";
+            row.insertCell(4).textContent = formatTimestamp(clip.created_at);
+            row.insertCell(5).textContent = clip.file_name || "";
         });
     }
 
@@ -134,12 +142,9 @@ function renderDashboard(dashboard) {
     }
 }
 
-refreshTargetsButton.addEventListener("click", () => {
-    socket.emit("refresh_targets");
-});
-
-startSyncButton.addEventListener("click", () => {
-    socket.emit("start_sync");
+syncControlButton.addEventListener("click", () => {
+    syncControlButton.disabled = true;
+    socket.emit("set_sync_paused", { sync_paused: !currentControl.sync_paused });
 });
 
 document.getElementById("config-modal").addEventListener("show.bs.modal", () => {
@@ -147,6 +152,7 @@ document.getElementById("config-modal").addEventListener("show.bs.modal", () => 
 });
 
 socket.on("settings_loaded", (settings) => {
+    currentSettings = settings;
     lidarrAddress.value = settings.lidarr_address || "";
     navidromeAddress.value = settings.navidrome_address || "";
     clipOutputMode.value = settings.clip_output_mode || "";
@@ -155,52 +161,20 @@ socket.on("settings_loaded", (settings) => {
     syncArtistAllowlist.value = (settings.sync_artist_allowlist || []).join(", ");
     maxTargetsPerRun.value = settings.max_targets_per_run ?? "";
     downloadEnabled.value = settings.download_enabled ? "true" : "false";
-    const scope = (settings.sync_artist_allowlist || []).length ? "Allowlist" : "Global";
-    const state = settings.download_enabled ? "enabled" : "paused";
-    dashboardRollout.textContent = `${scope}, ${state}`;
+    renderRollout();
 });
 
 socket.on("state_update", (state) => {
-    const targetBusy = state.targets_status === "busy";
-    refreshTargetsButton.disabled = targetBusy;
-    targetsSpinner.classList.toggle("d-none", !targetBusy);
-    setProgressState(targetsProgressBar, state.targets_status);
-
-    targetsTable.innerHTML = "";
-    (state.targets || []).forEach((target) => {
-        const row = targetsTable.insertRow();
-        row.insertCell(0).textContent = `${target.artist} - ${target.title}`;
-        row.insertCell(1).textContent = target.album;
-        const durationCell = row.insertCell(2);
-        durationCell.textContent = formatDuration(target.duration);
-        durationCell.classList.add("text-center");
-    });
-
-    const syncBusy = state.sync_status === "running";
-    startSyncButton.disabled = syncBusy;
-    syncSpinner.classList.toggle("d-none", !syncBusy);
-    setProgressState(syncProgressBar, state.sync_status);
-
-    const summary = state.summary || {};
-    summaryTargets.textContent = summary.targets || 0;
-    summaryDownloaded.textContent = summary.downloaded || 0;
-    summaryNoMatch.textContent = summary.no_match || 0;
-    summaryErrors.textContent = (summary.download_errors || 0) + (summary.navidrome_missing || 0);
-
-    clipsTable.innerHTML = "";
-    Object.entries(summary).forEach(([key, value]) => {
-        const row = clipsTable.insertRow();
-        row.insertCell(0).textContent = key.replaceAll("_", " ");
-        const valueCell = row.insertCell(1);
-        valueCell.textContent = value;
-        valueCell.classList.add("text-center");
-    });
-
+    renderControl(state.control);
     renderDashboard(state.dashboard);
 });
 
 socket.on("dashboard_loaded", (dashboard) => {
     renderDashboard(dashboard);
+});
+
+socket.on("control_loaded", (control) => {
+    renderControl(control);
 });
 
 socket.on("new_toast_msg", (data) => {
@@ -247,10 +221,12 @@ themeSwitch.addEventListener("click", () => {
 socket.on("connect", () => {
     socket.emit("load_settings");
     socket.emit("load_dashboard");
+    socket.emit("load_control");
 });
 
 setInterval(() => {
     if (socket.connected) {
         socket.emit("load_dashboard");
+        socket.emit("load_control");
     }
 }, 30000);

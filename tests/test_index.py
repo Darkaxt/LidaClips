@@ -196,6 +196,20 @@ class IndexMigrationTests(unittest.TestCase):
         self.assertEqual(summary["recent_failures"][0]["track_title"], "Static")
         self.assertEqual({clip["id"] for clip in summary["recent_clips"]}, {1, new_id})
 
+    def test_sync_control_state_defaults_to_running_and_persists_pause(self):
+        index = ClipIndex(":memory:")
+
+        self.assertFalse(index.get_sync_paused())
+
+        index.set_sync_paused(True)
+
+        self.assertTrue(index.get_sync_paused())
+        self.assertTrue(index.dashboard_summary()["sync_paused"])
+
+        index.set_sync_paused(False)
+
+        self.assertFalse(index.get_sync_paused())
+
 
 if __name__ == "__main__":
     unittest.main()

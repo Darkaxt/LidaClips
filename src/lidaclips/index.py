@@ -82,6 +82,12 @@ class ClipIndex:
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(lidarr_track_id) REFERENCES tracks(lidarr_track_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS control_state (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    sync_paused INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL
+                );
                 """
             )
             self._migrate_schema()
@@ -327,6 +333,25 @@ class ClipIndex:
     def all_clips(self, limit: int = 1000) -> list[dict[str, Any]]:
         return self.search_clips(limit=limit)
 
+    def get_sync_paused(self) -> bool:
+        row = self.connection.execute(
+            "SELECT sync_paused FROM control_state WHERE id = 1"
+        ).fetchone()
+        return bool(row["sync_paused"]) if row is not None else False
+
+    def set_sync_paused(self, paused: bool) -> None:
+        with self.connection:
+            self.connection.execute(
+                """
+                INSERT INTO control_state (id, sync_paused, updated_at)
+                VALUES (1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    sync_paused = excluded.sync_paused,
+                    updated_at = excluded.updated_at
+                """,
+                (1 if paused else 0, utc_now()),
+            )
+
     def dashboard_summary(self, recent_limit: int = 12) -> dict[str, Any]:
         active_by_tier = {
             row["quality_tier"]: int(row["count"])
@@ -392,6 +417,7 @@ class ClipIndex:
             "replaced_clips": status_by_name.get("replaced", 0),
             "failures": sum(failure_by_reason.values()),
             "no_match": failure_by_reason.get("no_match", 0),
+            "sync_paused": self.get_sync_paused(),
             "recent_clips": [self._clip_row_to_dict(row) for row in recent_clips if row is not None],
             "recent_failures": [dict(row) for row in recent_failures if row is not None],
         }

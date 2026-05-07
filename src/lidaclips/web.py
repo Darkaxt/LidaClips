@@ -57,6 +57,21 @@ def create_app(index: ClipIndex, api_key: str = "", service: Any | None = None) 
     def dashboard():
         return jsonify(public_dashboard(index.dashboard_summary()))
 
+    @app.get("/api/v1/control")
+    @require_api_key
+    def get_control():
+        return jsonify(_control_payload())
+
+    @app.post("/api/v1/control")
+    @require_api_key
+    def set_control():
+        payload = request.get_json(silent=True) or {}
+        sync_paused = payload.get("sync_paused")
+        if not isinstance(sync_paused, bool):
+            return jsonify({"error": "sync_paused must be a boolean"}), 400
+        index.set_sync_paused(sync_paused)
+        return jsonify(_control_payload())
+
     @app.get("/api/v1/tracks/<int:lidarr_track_id>/clip")
     @require_api_key
     def clip_by_track(lidarr_track_id: int):
@@ -115,6 +130,11 @@ def create_app(index: ClipIndex, api_key: str = "", service: Any | None = None) 
             return jsonify({"error": "clip_file_missing"}), 404
         return send_file(file_path, mimetype=row.get("mime_type") or "video/mp4", conditional=True)
 
+    def _control_payload() -> dict[str, Any]:
+        runtime = app.config.get("LIDACLIPS_RUNTIME")
+        sync_running = bool(runtime is not None and getattr(runtime, "sync_status", None) == "running")
+        return {"sync_paused": index.get_sync_paused(), "sync_running": sync_running}
+
     return app
 
 
@@ -153,6 +173,8 @@ def public_clip(row: dict[str, Any]) -> dict[str, Any]:
         "quality_tier": row.get("quality_tier"),
         "stream_url": row["stream_url"],
         "file_name": os.path.basename(row["file_path"]),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
         "evidence": row["evidence"],
     }
 
