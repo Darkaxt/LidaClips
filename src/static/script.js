@@ -15,6 +15,7 @@ const apiKeyRevealIcon = document.getElementById("api-key-reveal-icon");
 const apiKeyCopyButton = document.getElementById("api-key-copy-button");
 
 const dashboardActiveClips = document.getElementById("dashboard-active-clips");
+const dashboardCoverage = document.getElementById("dashboard-coverage");
 const dashboardOfficialClips = document.getElementById("dashboard-official-clips");
 const dashboardFallbackClips = document.getElementById("dashboard-fallback-clips");
 const dashboardFailures = document.getElementById("dashboard-failures");
@@ -55,6 +56,14 @@ function formatTimestamp(value) {
         hour: "2-digit",
         minute: "2-digit",
     });
+}
+
+function formatCoveragePercent(value) {
+    const percent = Number(value);
+    if (!Number.isFinite(percent)) {
+        return "0%";
+    }
+    return `${new Intl.NumberFormat([], { maximumFractionDigits: 1 }).format(percent)}%`;
 }
 
 function tierLabel(tier) {
@@ -108,6 +117,7 @@ function renderDashboard(dashboard) {
         return;
     }
     dashboardActiveClips.textContent = dashboard.active_clips || 0;
+    dashboardCoverage.textContent = formatCoveragePercent(dashboard.coverage_percent);
     dashboardOfficialClips.textContent = dashboard.official_clips || 0;
     dashboardFallbackClips.textContent = dashboard.fallback_clips || 0;
     dashboardFailures.textContent = dashboard.failures || 0;

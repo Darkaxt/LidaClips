@@ -409,9 +409,12 @@ class ClipIndex:
             (recent_limit,),
         ).fetchall()
         active_clips = sum(active_by_tier.values())
+        tracked_tracks = self.connection.execute("SELECT COUNT(*) AS count FROM tracks").fetchone()["count"]
+        coverage_percent = round((active_clips / tracked_tracks) * 100, 1) if tracked_tracks else 0.0
         return {
-            "tracked_tracks": self.connection.execute("SELECT COUNT(*) AS count FROM tracks").fetchone()["count"],
+            "tracked_tracks": tracked_tracks,
             "active_clips": active_clips,
+            "coverage_percent": coverage_percent,
             "official_clips": active_by_tier.get("official", 0),
             "fallback_clips": active_by_tier.get("fallback", 0),
             "replaced_clips": status_by_name.get("replaced", 0),

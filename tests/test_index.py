@@ -188,6 +188,7 @@ class IndexMigrationTests(unittest.TestCase):
 
         self.assertEqual(summary["tracked_tracks"], 3)
         self.assertEqual(summary["active_clips"], 2)
+        self.assertEqual(summary["coverage_percent"], 66.7)
         self.assertEqual(summary["official_clips"], 1)
         self.assertEqual(summary["fallback_clips"], 1)
         self.assertEqual(summary["replaced_clips"], 1)
@@ -195,6 +196,15 @@ class IndexMigrationTests(unittest.TestCase):
         self.assertEqual(summary["no_match"], 1)
         self.assertEqual(summary["recent_failures"][0]["track_title"], "Static")
         self.assertEqual({clip["id"] for clip in summary["recent_clips"]}, {1, new_id})
+
+    def test_dashboard_summary_reports_zero_coverage_without_tracks(self):
+        index = ClipIndex(":memory:")
+
+        summary = index.dashboard_summary()
+
+        self.assertEqual(summary["tracked_tracks"], 0)
+        self.assertEqual(summary["active_clips"], 0)
+        self.assertEqual(summary["coverage_percent"], 0.0)
 
     def test_sync_control_state_defaults_to_running_and_persists_pause(self):
         index = ClipIndex(":memory:")
