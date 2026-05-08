@@ -35,7 +35,7 @@ class YtDlpCandidateSearch:
             return self._search_with_binary(query)
         options = {
             "quiet": True,
-            "extract_flat": False,
+            "extract_flat": True,
             "skip_download": True,
             "noplaylist": True,
         }
@@ -53,7 +53,7 @@ class YtDlpCandidateSearch:
 
     def _search_with_binary(self, query: str) -> list[Candidate]:
         binary = self._resolve_binary()
-        command = [binary, "--dump-json", "--skip-download", "--no-playlist", query]
+        command = [binary, "--dump-json", "--skip-download", "--no-playlist", "--flat-playlist", query]
         if self.cookies_path:
             command.extend(["--cookies", self.cookies_path])
         if self.js_runtime_path:
