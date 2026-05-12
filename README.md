@@ -83,6 +83,7 @@ youtube_po_provider=off
 youtube_po_provider_url=http://lidaclips-pot:4416
 youtube_player_clients=mweb,default
 youtube_enable_hls_fallback=true
+youtube_proxy_url=
 socketio_allowed_origins=
 sync_artist_allowlist=
 max_targets_per_run=25
@@ -101,6 +102,8 @@ navidrome_token_or_password=navidrome-password-or-token
 Place a YouTube `cookies.txt` file in `/lidaclips/config` if your setup needs cookies for `yt-dlp`.
 
 For YouTube DASH formats that return HTTP 403, LidaClips can use an optional PO-token provider. The recommended Docker-first option is `youtube_po_provider=bgutil_http` with an internal `lidaclips-pot` container. HLS fallback remains enabled by default because YouTube format availability changes frequently.
+
+If YouTube challenges the server IP, set `youtube_proxy_url` to an internal HTTP CONNECT proxy. This routes only yt-dlp extraction and download traffic through that proxy while keeping the LidaClips UI, API, Lidarr, and Navidrome traffic on the normal Docker network. The bundled proxy entrypoint is `python -m lidaclips.connect_proxy`.
 
 ## Configuration
 
@@ -134,6 +137,7 @@ Environment variables override `config/settings_config.json`.
 | `youtube_po_provider_url` | `http://lidaclips-pot:4416` | Internal bgutil provider URL when PO-token support is enabled. |
 | `youtube_player_clients` | `mweb,default` | Comma-separated YouTube clients used for the primary DASH attempt. |
 | `youtube_enable_hls_fallback` | `true` | Keep the HLS retry path enabled after a primary DASH failure. |
+| `youtube_proxy_url` | empty | Optional HTTP/HTTPS proxy URL used only by yt-dlp candidate searches and downloads. |
 | `socketio_allowed_origins` | empty | Optional comma-separated UI origins for reverse-proxy deployments, for example `https://clips.example.com`. |
 | `api_key` | empty | Optional API key for clip lookup and stream endpoints. |
 | `ytdlp_binary` | empty | Optional local `yt-dlp` binary path for non-container runs. |

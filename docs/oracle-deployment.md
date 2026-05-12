@@ -33,11 +33,20 @@ services:
       - aiostreams_default
     restart: unless-stopped
 
+  lidaclips-youtube-proxy:
+    image: ghcr.io/darkaxt/lidaclips:latest
+    container_name: lidaclips-youtube-proxy
+    entrypoint: ["python", "-m", "lidaclips.connect_proxy"]
+    command: ["--host", "0.0.0.0", "--port", "8888"]
+    network_mode: "service:aiostreams-tailscale"
+    restart: unless-stopped
+
   lidaclips:
     image: ghcr.io/darkaxt/lidaclips:latest
     container_name: lidaclips
     depends_on:
       - lidaclips-pot
+      - lidaclips-youtube-proxy
     env_file:
       - .env
     volumes:
@@ -91,6 +100,7 @@ youtube_po_provider=bgutil_http
 youtube_po_provider_url=http://lidaclips-pot:4416
 youtube_player_clients=mweb,default
 youtube_enable_hls_fallback=true
+youtube_proxy_url=http://aiostreams-tailscale:8888
 socketio_allowed_origins=https://clips.remaxku.eu
 sync_schedule=
 sync_artist_allowlist=Linkin Park
@@ -101,6 +111,8 @@ CLIPS_BASIC_AUTH_HASH=change-me
 ```
 
 The `lidaclips-pot` service is internal-only. Do not add Traefik labels or host port publishing for it. LidaClips uses it only for the primary DASH attempt; HLS fallback remains enabled.
+
+The `lidaclips-youtube-proxy` service is also internal-only. It shares the existing `aiostreams-tailscale` network namespace so yt-dlp traffic exits through the Tailscale route while the main LidaClips container remains on `aiostreams_default` for Traefik, Lidarr, Navidrome, and Uptime Kuma. Because the proxy shares that namespace, the reachable host is `aiostreams-tailscale`, not `lidaclips-youtube-proxy`.
 
 Fallback clips remain visible through the same API routes as official clips. Upgrade runs replace active fallback clips when an official candidate appears or the same tier improves by `upgrade_min_score_delta`; old files are deleted after a successful replacement while replaced DB rows are retained for audit history.
 

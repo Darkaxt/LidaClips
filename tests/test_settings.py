@@ -23,6 +23,7 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(settings.youtube_po_provider_url, "http://lidaclips-pot:4416")
             self.assertEqual(settings.youtube_player_clients, ["mweb", "default"])
             self.assertTrue(settings.youtube_enable_hls_fallback)
+            self.assertEqual(settings.youtube_proxy_url, "")
             self.assertEqual(settings.socketio_allowed_origins, [])
             self.assertTrue(os.path.exists(os.path.join(temp_dir, "settings_config.json")))
 
@@ -51,6 +52,7 @@ class SettingsTests(unittest.TestCase):
                     "youtube_po_provider_url": "http://pot:4416",
                     "youtube_player_clients": "mweb, default",
                     "youtube_enable_hls_fallback": "false",
+                    "youtube_proxy_url": "http://youtube-proxy:8888",
                     "socketio_allowed_origins": "https://clips.example.test, http://localhost:5000",
                 },
             )
@@ -68,6 +70,7 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(settings.youtube_po_provider_url, "http://pot:4416")
             self.assertEqual(settings.youtube_player_clients, ["mweb", "default"])
             self.assertFalse(settings.youtube_enable_hls_fallback)
+            self.assertEqual(settings.youtube_proxy_url, "http://youtube-proxy:8888")
             self.assertEqual(settings.socketio_allowed_origins, ["https://clips.example.test", "http://localhost:5000"])
 
     def test_empty_environment_values_clear_schedule_and_allowlist(self):

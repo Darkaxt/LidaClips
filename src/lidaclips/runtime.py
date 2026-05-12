@@ -173,6 +173,7 @@ class Runtime:
             "youtube_po_provider_url": self.settings.youtube_po_provider_url,
             "youtube_player_clients": self.settings.youtube_player_clients,
             "youtube_enable_hls_fallback": self.settings.youtube_enable_hls_fallback,
+            "youtube_proxy_url": self.settings.youtube_proxy_url,
             "socketio_allowed_origins": self.settings.socketio_allowed_origins,
         }
 
@@ -199,6 +200,7 @@ def build_runtime(config_folder: str = "config") -> Runtime:
             youtube_po_provider=settings.youtube_po_provider,
             youtube_po_provider_url=settings.youtube_po_provider_url,
             youtube_player_clients=settings.youtube_player_clients,
+            youtube_proxy_url=settings.youtube_proxy_url,
         ),
         scorer=ClipScorer(settings.minimum_clip_score, minimum_fallback_score=settings.minimum_fallback_score),
         downloader=ClipDownloader(
@@ -210,6 +212,7 @@ def build_runtime(config_folder: str = "config") -> Runtime:
             youtube_po_provider_url=settings.youtube_po_provider_url,
             youtube_player_clients=settings.youtube_player_clients,
             youtube_enable_hls_fallback=settings.youtube_enable_hls_fallback,
+            youtube_proxy_url=settings.youtube_proxy_url,
             path_conflict_checker=lambda path, target: index.path_conflicts(path, target.lidarr_track_id),
         ),
         navidrome_client=navidrome_client,

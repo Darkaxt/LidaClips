@@ -98,6 +98,34 @@ class CandidateSearchTests(unittest.TestCase):
         self.assertIn("--flat-playlist", command)
         self.assertEqual(candidates[0].video_id, "abc123")
 
+    def test_binary_search_passes_configured_proxy(self):
+        target = ClipTarget(
+            lidarr_track_id=42,
+            artist_id=1,
+            album_id=10,
+            artist="The Example Band",
+            album="Neon Nights",
+            album_year=2020,
+            title="Bright Lights",
+            track_number="1",
+            absolute_track_number=1,
+            duration=240,
+            source_file_path="/music/song.flac",
+        )
+        entry = {"id": "abc123", "title": "The Example Band - Bright Lights"}
+
+        with patch("lidaclips.candidate_search.subprocess.run") as run:
+            run.return_value = SimpleNamespace(stdout=json.dumps(entry) + "\n")
+
+            YtDlpCandidateSearch(
+                ytdlp_binary="yt-dlp",
+                youtube_proxy_url="http://youtube-proxy:8888",
+            ).search(target)
+
+        command = run.call_args.args[0]
+        self.assertIn("--proxy", command)
+        self.assertIn("http://youtube-proxy:8888", command)
+
     def test_enables_configured_node_runtime_for_youtube_extraction(self):
         created = []
 
@@ -160,6 +188,35 @@ class CandidateSearchTests(unittest.TestCase):
                 "youtubepot-bgutilhttp": {"base_url": ["http://lidaclips-pot:4416"]},
             },
         )
+
+    def test_passes_configured_proxy_to_candidate_extraction(self):
+        created = []
+
+        def factory(options):
+            instance = FakeYtDlp(options)
+            created.append(instance)
+            return instance
+
+        target = ClipTarget(
+            lidarr_track_id=42,
+            artist_id=1,
+            album_id=10,
+            artist="The Example Band",
+            album="Neon Nights",
+            album_year=2020,
+            title="Bright Lights",
+            track_number="1",
+            absolute_track_number=1,
+            duration=240,
+            source_file_path="/music/song.flac",
+        )
+
+        YtDlpCandidateSearch(
+            ytdlp_factory=factory,
+            youtube_proxy_url="http://youtube-proxy:8888",
+        ).search(target)
+
+        self.assertEqual(created[0].options["proxy"], "http://youtube-proxy:8888")
 
 
 if __name__ == "__main__":

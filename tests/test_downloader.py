@@ -291,6 +291,44 @@ class DownloaderTests(unittest.TestCase):
 
             self.assertEqual(len(created), 1)
 
+    def test_download_passes_configured_proxy_to_yt_dlp(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            created = []
+
+            def factory(options):
+                instance = FakeYtDlp(options)
+                created.append(instance)
+                return instance
+
+            target = ClipTarget(
+                lidarr_track_id=42,
+                artist_id=1,
+                album_id=10,
+                artist="The Example Band",
+                album="Neon Nights",
+                album_year=2020,
+                title="Bright Lights",
+                track_number="1",
+                absolute_track_number=1,
+                duration=240,
+                source_file_path="/music/song.flac",
+            )
+            candidate = Candidate(video_id="abc123", title="Official", webpage_url="https://www.youtube.com/watch?v=abc123")
+            storage = ClipStorage(
+                output_mode="clips_lane",
+                output_path=os.path.join(temp_dir, "clips"),
+                staging_path=os.path.join(temp_dir, "staging"),
+            )
+            downloader = ClipDownloader(
+                storage=storage,
+                ytdlp_factory=factory,
+                youtube_proxy_url="http://youtube-proxy:8888",
+            )
+
+            downloader.download(target, candidate)
+
+            self.assertEqual(created[0].options["proxy"], "http://youtube-proxy:8888")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,6 +19,7 @@ class YtDlpCandidateSearch:
         youtube_po_provider: str = "off",
         youtube_po_provider_url: str = "http://lidaclips-pot:4416",
         youtube_player_clients: list[str] | None = None,
+        youtube_proxy_url: str = "",
     ):
         self.limit = int(limit)
         self.cookies_path = cookies_path
@@ -28,6 +29,7 @@ class YtDlpCandidateSearch:
         self.youtube_po_provider = youtube_po_provider
         self.youtube_po_provider_url = youtube_po_provider_url.rstrip("/")
         self.youtube_player_clients = youtube_player_clients or ["mweb", "default"]
+        self.youtube_proxy_url = youtube_proxy_url.strip()
 
     def search(self, target: ClipTarget) -> list[Candidate]:
         query = f"ytsearch{self.limit}:{target.artist} {target.title} official music video"
@@ -41,6 +43,8 @@ class YtDlpCandidateSearch:
         }
         if self.cookies_path:
             options["cookiefile"] = self.cookies_path
+        if self.youtube_proxy_url:
+            options["proxy"] = self.youtube_proxy_url
         if self.js_runtime_path:
             options["js_runtimes"] = {"node": {"path": self.js_runtime_path}}
         extractor_args = self._extractor_args()
@@ -56,6 +60,8 @@ class YtDlpCandidateSearch:
         command = [binary, "--dump-json", "--skip-download", "--no-playlist", "--flat-playlist", query]
         if self.cookies_path:
             command.extend(["--cookies", self.cookies_path])
+        if self.youtube_proxy_url:
+            command.extend(["--proxy", self.youtube_proxy_url])
         if self.js_runtime_path:
             command.extend(["--js-runtimes", f"node:{self.js_runtime_path}"])
         for extractor_arg in self._binary_extractor_args():

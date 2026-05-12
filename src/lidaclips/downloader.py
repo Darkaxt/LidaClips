@@ -25,6 +25,7 @@ class ClipDownloader:
         youtube_po_provider_url: str = "http://lidaclips-pot:4416",
         youtube_player_clients: list[str] | None = None,
         youtube_enable_hls_fallback: bool = True,
+        youtube_proxy_url: str = "",
         path_conflict_checker: Callable[[str, ClipTarget], bool] | None = None,
     ):
         self.storage = storage
@@ -37,6 +38,7 @@ class ClipDownloader:
         self.youtube_po_provider_url = youtube_po_provider_url.rstrip("/")
         self.youtube_player_clients = youtube_player_clients or ["mweb", "default"]
         self.youtube_enable_hls_fallback = bool(youtube_enable_hls_fallback)
+        self.youtube_proxy_url = youtube_proxy_url.strip()
         self.path_conflict_checker = path_conflict_checker
 
     def download(self, target: ClipTarget, candidate: Candidate) -> dict[str, str]:
@@ -81,6 +83,8 @@ class ClipDownloader:
         }
         if self.cookies_path:
             options["cookiefile"] = self.cookies_path
+        if self.youtube_proxy_url:
+            options["proxy"] = self.youtube_proxy_url
         if self.js_runtime_path:
             options["js_runtimes"] = {"node": {"path": self.js_runtime_path}}
         extractor_args = self._extractor_args(use_po_provider)

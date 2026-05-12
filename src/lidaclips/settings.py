@@ -37,6 +37,7 @@ class Settings:
     youtube_po_provider_url: str = "http://lidaclips-pot:4416"
     youtube_player_clients: list[str] = None
     youtube_enable_hls_fallback: bool = True
+    youtube_proxy_url: str = ""
     socketio_allowed_origins: list[str] = None
 
     def __post_init__(self):
