@@ -38,7 +38,7 @@ services:
     container_name: lidaclips-youtube-proxy
     entrypoint: ["python", "-m", "lidaclips.connect_proxy"]
     command: ["--host", "0.0.0.0", "--port", "8888"]
-    network_mode: "service:aiostreams-tailscale"
+    network_mode: "container:aiostreams-tailscale"
     restart: unless-stopped
 
   lidaclips:
@@ -112,7 +112,7 @@ CLIPS_BASIC_AUTH_HASH=change-me
 
 The `lidaclips-pot` service is internal-only. Do not add Traefik labels or host port publishing for it. LidaClips uses it only for the primary DASH attempt; HLS fallback remains enabled.
 
-The `lidaclips-youtube-proxy` service is also internal-only. It shares the existing `aiostreams-tailscale` network namespace so yt-dlp traffic exits through the Tailscale route while the main LidaClips container remains on `aiostreams_default` for Traefik, Lidarr, Navidrome, and Uptime Kuma. Because the proxy shares that namespace, the reachable host is `aiostreams-tailscale`, not `lidaclips-youtube-proxy`.
+The `lidaclips-youtube-proxy` service is also internal-only. It shares the existing `aiostreams-tailscale` container network namespace so yt-dlp traffic exits through the Tailscale route while the main LidaClips container remains on `aiostreams_default` for Traefik, Lidarr, Navidrome, and Uptime Kuma. Because the proxy shares that namespace, the reachable host is `aiostreams-tailscale`, not `lidaclips-youtube-proxy`.
 
 Fallback clips remain visible through the same API routes as official clips. Upgrade runs replace active fallback clips when an official candidate appears or the same tier improves by `upgrade_min_score_delta`; old files are deleted after a successful replacement while replaced DB rows are retained for audit history.
 
