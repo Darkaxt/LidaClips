@@ -56,6 +56,18 @@ class FakeDownloader:
         return {"file_path": self.file_path, "mime_type": "video/mp4"}
 
 
+class AuthBlockedDownloader:
+    def __init__(self):
+        self.downloads = []
+
+    def download(self, target, candidate):
+        self.downloads.append((target, candidate))
+        raise RuntimeError(
+            "ERROR: [youtube] abc123: Sign in to confirm you’re not a bot. "
+            "Use --cookies-from-browser or --cookies for the authentication."
+        )
+
+
 class FakeStorageDownloader(FakeDownloader):
     def __init__(self, file_path, storage):
         super().__init__(file_path)
@@ -439,6 +451,35 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(downloader.downloads[0][0].lidarr_track_id, 43)
             self.assertFalse(index.has_completed_clip(42))
             self.assertTrue(index.get_failure(42)["reason"].startswith("candidate_search_error: "))
+
+    def test_sync_once_pauses_after_youtube_auth_block_download_error(self):
+        index = ClipIndex(":memory:")
+        downloader = AuthBlockedDownloader()
+        service = LidaClipsService(
+            index=index,
+            lidarr_client=FakeLidarr([self.make_target(), self.make_other_target()]),
+            candidate_search=FakeSearch(
+                [
+                    Candidate(
+                        video_id="abc123",
+                        title="The Example Band - Bright Lights",
+                        webpage_url="https://www.youtube.com/watch?v=abc123",
+                    )
+                ]
+            ),
+            scorer=FakeScorer(),
+            downloader=downloader,
+            logger=Mock(),
+        )
+
+        summary = service.sync_once()
+
+        self.assertEqual(summary["download_errors"], 1)
+        self.assertEqual(summary["youtube_auth_blocked"], 1)
+        self.assertTrue(index.get_sync_paused())
+        self.assertEqual(len(downloader.downloads), 1)
+        self.assertTrue(index.get_failure(42)["reason"].startswith("download_error: "))
+        self.assertIsNone(index.get_failure(43))
 
     def test_sync_once_reconciles_completed_clip_to_audio_matching_filename(self):
         with tempfile.TemporaryDirectory() as temp_dir:

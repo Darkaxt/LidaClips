@@ -62,6 +62,7 @@ class LidaClipsService:
             "no_upgrade": 0,
             "download_disabled": 0,
             "search_errors": 0,
+            "youtube_auth_blocked": 0,
             "reconciled": 0,
             "reconcile_errors": 0,
         }
@@ -92,6 +93,10 @@ class LidaClipsService:
                 if planned.mode == "missing":
                     self.index.record_no_match(target.lidarr_track_id, f"candidate_search_error: {exc}")
                 summary["search_errors"] += 1
+                if self._is_youtube_auth_block(exc):
+                    summary["youtube_auth_blocked"] += 1
+                    self.index.set_sync_paused(True)
+                    break
                 continue
 
             best_candidate, best_decision = self._score_candidates(target, candidates)
@@ -121,6 +126,10 @@ class LidaClipsService:
                 if planned.mode == "missing":
                     self.index.record_no_match(target.lidarr_track_id, f"download_error: {exc}")
                 summary["download_errors"] += 1
+                if self._is_youtube_auth_block(exc):
+                    summary["youtube_auth_blocked"] += 1
+                    self.index.set_sync_paused(True)
+                    break
                 continue
 
             clip_id = self.index.record_clip(
@@ -263,6 +272,16 @@ class LidaClipsService:
         if hasattr(client, "ping"):
             return client.ping()
         return {"ok": False, "error": "client has no ping method"}
+
+    def _is_youtube_auth_block(self, exc: Exception) -> bool:
+        message = str(exc).lower()
+        if "youtube" not in message:
+            return False
+        return (
+            "sign in to confirm" in message
+            or "not a bot" in message
+            or "use --cookies-from-browser" in message
+        )
 
     def _reconcile_completed_clip_paths(self) -> tuple[int, int]:
         storage = getattr(self.downloader, "storage", None)
