@@ -62,6 +62,12 @@ class FakeRuntimeService:
         return []
 
 
+class ProxyUnavailableRuntimeService(FakeRuntimeService):
+    def sync_once(self):
+        self.sync_calls += 1
+        return {"downloaded": 0, "proxy_unavailable": 1}
+
+
 class RuntimeControlTests(unittest.TestCase):
     def make_runtime(self):
         index = ClipIndex(":memory:")
@@ -89,6 +95,17 @@ class RuntimeControlTests(unittest.TestCase):
         self.assertEqual(service.sync_calls, 1)
         self.assertEqual(runtime.sync_status, "complete")
         self.assertEqual(runtime.last_summary["downloaded"], 1)
+
+    def test_dashboard_payload_exposes_last_proxy_unavailable_summary(self):
+        index = ClipIndex(":memory:")
+        service = ProxyUnavailableRuntimeService()
+        runtime = Runtime(Settings(api_key="client-secret", sync_schedule=[]), index, service)
+
+        runtime.sync_once()
+        dashboard = runtime._dashboard_payload()
+
+        self.assertEqual(dashboard["proxy_unavailable"], 1)
+        self.assertEqual(dashboard["last_sync_summary"]["proxy_unavailable"], 1)
 
     def test_runtime_reports_sync_running_to_control_api(self):
         runtime, _index, _service = self.make_runtime()

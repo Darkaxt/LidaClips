@@ -44,6 +44,15 @@ class FailingThenSuccessfulSearch:
         ]
 
 
+class ProxyFailingSearch:
+    def search(self, target):
+        raise RuntimeError(
+            "ERROR: Unable to download API page: ('Unable to connect to proxy', "
+            "NewConnectionError(\"HTTPSConnection(host='aiostreams-tailscale', port=8888): "
+            "Failed to establish a new connection: [Errno 111] Connection refused\"))"
+        )
+
+
 class FakeDownloader:
     def __init__(self, file_path):
         self.file_path = file_path
@@ -81,6 +90,15 @@ class FakePoDownloader(FakeDownloader):
 
     def po_provider_health(self):
         return self.po_health
+
+
+class FakeProxyHealthDownloader(FakeDownloader):
+    def __init__(self, file_path, proxy_health):
+        super().__init__(file_path)
+        self.proxy_health = proxy_health
+
+    def youtube_proxy_health(self):
+        return self.proxy_health
 
 
 class FakeDecision:
@@ -452,6 +470,25 @@ class ServiceTests(unittest.TestCase):
             self.assertFalse(index.has_completed_clip(42))
             self.assertTrue(index.get_failure(42)["reason"].startswith("candidate_search_error: "))
 
+    def test_sync_once_pauses_on_proxy_failure_without_track_failure_spam(self):
+        index = ClipIndex(":memory:")
+        service = LidaClipsService(
+            index=index,
+            lidarr_client=FakeLidarr([self.make_target(), self.make_other_target()]),
+            candidate_search=ProxyFailingSearch(),
+            scorer=FakeScorer(),
+            downloader=FakeDownloader("/unused/clip.mp4"),
+            logger=Mock(),
+        )
+
+        summary = service.sync_once()
+
+        self.assertEqual(summary["proxy_unavailable"], 1)
+        self.assertEqual(summary["search_errors"], 0)
+        self.assertTrue(index.get_sync_paused())
+        self.assertIsNone(index.get_failure(42))
+        self.assertIsNone(index.get_failure(43))
+
     def test_sync_once_pauses_after_youtube_auth_block_download_error(self):
         index = ClipIndex(":memory:")
         downloader = AuthBlockedDownloader()
@@ -548,6 +585,22 @@ class ServiceTests(unittest.TestCase):
 
         self.assertTrue(payload["checks"]["po_provider"]["ok"])
         self.assertEqual(payload["checks"]["po_provider"]["address"], "http://lidaclips-pot:4416")
+
+    def test_health_reports_youtube_proxy_check_when_downloader_exposes_it(self):
+        index = ClipIndex(":memory:")
+        service = LidaClipsService(
+            index=index,
+            lidarr_client=FakeLidarr([]),
+            candidate_search=FakeSearch([]),
+            scorer=FakeScorer(),
+            downloader=FakeProxyHealthDownloader("/unused/clip.mp4", {"ok": False, "address": "http://proxy:8888"}),
+        )
+
+        payload = service.health_check()
+
+        self.assertEqual(payload["status"], "degraded")
+        self.assertFalse(payload["checks"]["youtube_proxy"]["ok"])
+        self.assertEqual(payload["checks"]["youtube_proxy"]["address"], "http://proxy:8888")
 
 
 if __name__ == "__main__":

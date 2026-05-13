@@ -63,6 +63,7 @@ class LidaClipsService:
             "download_disabled": 0,
             "search_errors": 0,
             "youtube_auth_blocked": 0,
+            "proxy_unavailable": 0,
             "reconciled": 0,
             "reconcile_errors": 0,
         }
@@ -89,6 +90,11 @@ class LidaClipsService:
             try:
                 candidates = self.candidate_search.search(target)
             except Exception as exc:
+                if self._is_proxy_unavailable(exc):
+                    self.logger.exception("YouTube proxy unavailable while searching for %s - %s", target.artist, target.title)
+                    summary["proxy_unavailable"] += 1
+                    self.index.set_sync_paused(True)
+                    break
                 self.logger.exception("Candidate search failed for %s - %s", target.artist, target.title)
                 if planned.mode == "missing":
                     self.index.record_no_match(target.lidarr_track_id, f"candidate_search_error: {exc}")
@@ -122,6 +128,11 @@ class LidaClipsService:
             try:
                 download_result = self.downloader.download(target, best_candidate)
             except Exception as exc:
+                if self._is_proxy_unavailable(exc):
+                    self.logger.exception("YouTube proxy unavailable while downloading %s - %s", target.artist, target.title)
+                    summary["proxy_unavailable"] += 1
+                    self.index.set_sync_paused(True)
+                    break
                 self.logger.exception("Clip download failed for %s - %s", target.artist, target.title)
                 if planned.mode == "missing":
                     self.index.record_no_match(target.lidarr_track_id, f"download_error: {exc}")
@@ -265,6 +276,11 @@ class LidaClipsService:
             if not po_provider_check.get("skipped"):
                 checks["po_provider"] = po_provider_check
 
+        if hasattr(self.downloader, "youtube_proxy_health"):
+            youtube_proxy_check = self.downloader.youtube_proxy_health()
+            if not youtube_proxy_check.get("skipped"):
+                checks["youtube_proxy"] = youtube_proxy_check
+
         status = "ok" if all(check.get("ok") for check in checks.values()) else "degraded"
         return {"status": status, "checks": checks}
 
@@ -281,6 +297,18 @@ class LidaClipsService:
             "sign in to confirm" in message
             or "not a bot" in message
             or "use --cookies-from-browser" in message
+        )
+
+    def _is_proxy_unavailable(self, exc: Exception) -> bool:
+        message = str(exc).lower()
+        if "proxy" not in message:
+            return False
+        return (
+            "unable to connect to proxy" in message
+            or "connection refused" in message
+            or "failed to establish a new connection" in message
+            or "newconnectionerror" in message
+            or "proxyerror" in message
         )
 
     def _reconcile_completed_clip_paths(self) -> tuple[int, int]:

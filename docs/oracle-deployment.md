@@ -33,20 +33,11 @@ services:
       - aiostreams_default
     restart: unless-stopped
 
-  lidaclips-youtube-proxy:
-    image: ghcr.io/darkaxt/lidaclips:latest
-    container_name: lidaclips-youtube-proxy
-    entrypoint: ["python", "-m", "lidaclips.connect_proxy"]
-    command: ["--host", "0.0.0.0", "--port", "8888"]
-    network_mode: "container:aiostreams-tailscale"
-    restart: unless-stopped
-
   lidaclips:
     image: ghcr.io/darkaxt/lidaclips:latest
     container_name: lidaclips
     depends_on:
       - lidaclips-pot
-      - lidaclips-youtube-proxy
     env_file:
       - .env
     volumes:
@@ -112,7 +103,7 @@ CLIPS_BASIC_AUTH_HASH=change-me
 
 The `lidaclips-pot` service is internal-only. Do not add Traefik labels or host port publishing for it. LidaClips uses it only for the primary DASH attempt; HLS fallback remains enabled.
 
-The `lidaclips-youtube-proxy` service is also internal-only. It shares the existing `aiostreams-tailscale` container network namespace so yt-dlp traffic exits through the Tailscale route while the main LidaClips container remains on `aiostreams_default` for Traefik, Lidarr, Navidrome, and Uptime Kuma. Because the proxy shares that namespace, the reachable host is `aiostreams-tailscale`, not `lidaclips-youtube-proxy`.
+The YouTube proxy is provided by the existing `aiostreams-tailscale` container with `TS_OUTBOUND_HTTP_PROXY_LISTEN=:8888`. LidaClips reaches it at `http://aiostreams-tailscale:8888`, keeping only yt-dlp traffic on the Tailscale egress path while the main LidaClips container remains on `aiostreams_default` for Traefik, Lidarr, Navidrome, and Uptime Kuma. Do not reintroduce a separate namespace-sharing LidaClips proxy sidecar; it can become stale when the Tailscale container is recreated.
 
 Fallback clips remain visible through the same API routes as official clips. Upgrade runs replace active fallback clips when an official candidate appears or the same tier improves by `upgrade_min_score_delta`; old files are deleted after a successful replacement while replaced DB rows are retained for audit history.
 

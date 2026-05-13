@@ -1,6 +1,8 @@
 import os
+import socketserver
 import subprocess
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -36,6 +38,13 @@ class FailingYtDlp(FakeYtDlp):
         with open(f"{output_path}.part", "wb") as handle:
             handle.write(b"partial")
         raise RuntimeError("HTTP Error 403: Forbidden")
+
+
+class ProxyHealthHandler(socketserver.BaseRequestHandler):
+    def handle(self):
+        request = self.request.recv(4096)
+        if request.startswith(b"CONNECT "):
+            self.request.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
 
 
 class DownloaderTests(unittest.TestCase):
@@ -328,6 +337,34 @@ class DownloaderTests(unittest.TestCase):
             downloader.download(target, candidate)
 
             self.assertEqual(created[0].options["proxy"], "http://youtube-proxy:8888")
+
+    def test_youtube_proxy_health_reports_success_for_connect_proxy(self):
+        with socketserver.ThreadingTCPServer(("127.0.0.1", 0), ProxyHealthHandler) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            host, port = server.server_address
+            downloader = ClipDownloader(
+                storage=ClipStorage("clips_lane", "/unused", "/unused"),
+                youtube_proxy_url=f"http://{host}:{port}",
+            )
+
+            result = downloader.youtube_proxy_health()
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["address"], f"http://{host}:{port}")
+            server.shutdown()
+
+    def test_youtube_proxy_health_reports_connection_failure(self):
+        downloader = ClipDownloader(
+            storage=ClipStorage("clips_lane", "/unused", "/unused"),
+            youtube_proxy_url="http://127.0.0.1:9",
+        )
+
+        result = downloader.youtube_proxy_health()
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["address"], "http://127.0.0.1:9")
+        self.assertIn("error", result)
 
 
 if __name__ == "__main__":

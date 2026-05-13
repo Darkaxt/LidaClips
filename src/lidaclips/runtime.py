@@ -149,7 +149,11 @@ class Runtime:
         )
 
     def _dashboard_payload(self):
-        return public_dashboard(self.index.dashboard_summary())
+        payload = public_dashboard(self.index.dashboard_summary())
+        payload["last_sync_summary"] = dict(self.last_summary)
+        if self.last_summary.get("proxy_unavailable"):
+            payload["proxy_unavailable"] = self.last_summary["proxy_unavailable"]
+        return payload
 
     def _control_payload(self):
         return {"sync_paused": self.index.get_sync_paused(), "sync_running": self.sync_status == "running"}

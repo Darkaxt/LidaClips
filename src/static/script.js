@@ -158,12 +158,25 @@ function renderDashboard(dashboard) {
 
     recentFailuresList.innerHTML = "";
     const failures = dashboard.recent_failures || [];
-    if (!failures.length) {
+    const proxyUnavailable = Boolean(dashboard.proxy_unavailable);
+    if (!failures.length && !proxyUnavailable) {
         const empty = document.createElement("div");
         empty.className = "empty-state";
         empty.textContent = "No recent failures.";
         recentFailuresList.appendChild(empty);
     } else {
+        if (proxyUnavailable) {
+            const item = document.createElement("div");
+            item.className = "issue-item";
+            const title = document.createElement("strong");
+            title.textContent = "YouTube proxy unavailable";
+            const reason = document.createElement("span");
+            reason.textContent = "Sync paused because yt-dlp cannot reach the configured proxy.";
+            const time = document.createElement("small");
+            time.textContent = "Last sync";
+            item.append(title, reason, time);
+            recentFailuresList.appendChild(item);
+        }
         failures.forEach((failure) => {
             const item = document.createElement("div");
             item.className = "issue-item";

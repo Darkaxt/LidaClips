@@ -2,8 +2,10 @@ import glob
 import json
 import os
 import shutil
+import socket
 import subprocess
 from typing import Callable
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -112,6 +114,38 @@ class ClipDownloader:
             }
         except Exception as exc:
             return {"ok": False, "address": self.youtube_po_provider_url, "error": str(exc)}
+
+    def youtube_proxy_health(self) -> dict[str, str | bool]:
+        if not self.youtube_proxy_url:
+            return {"ok": True, "skipped": True}
+
+        parsed = urlsplit(self.youtube_proxy_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return {"ok": False, "address": self.youtube_proxy_url, "error": "unsupported or invalid proxy URL"}
+
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        target = "www.youtube.com:443"
+        request = (
+            f"CONNECT {target} HTTP/1.1\r\n"
+            f"Host: {target}\r\n"
+            "Proxy-Connection: close\r\n"
+            "\r\n"
+        ).encode("ascii")
+        try:
+            with socket.create_connection((parsed.hostname, port), timeout=10) as connection:
+                if parsed.scheme == "https":
+                    return {"ok": False, "address": self.youtube_proxy_url, "error": "HTTPS proxy health checks are not supported"}
+                connection.sendall(request)
+                response = connection.recv(128).decode("iso-8859-1", errors="replace")
+            status_line = response.splitlines()[0] if response else ""
+            return {
+                "ok": status_line.startswith("HTTP/") and " 200 " in status_line,
+                "address": self.youtube_proxy_url,
+                "target": target,
+                "status_line": status_line,
+            }
+        except Exception as exc:
+            return {"ok": False, "address": self.youtube_proxy_url, "target": target, "error": str(exc)}
 
     def _factory(self):
         if self.ytdlp_factory is not None:

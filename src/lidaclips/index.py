@@ -420,6 +420,7 @@ class ClipIndex:
             "replaced_clips": status_by_name.get("replaced", 0),
             "failures": sum(failure_by_reason.values()),
             "no_match": failure_by_reason.get("no_match", 0),
+            "proxy_unavailable": failure_by_reason.get("proxy_unavailable", 0),
             "sync_paused": self.get_sync_paused(),
             "recent_clips": [self._clip_row_to_dict(row) for row in recent_clips if row is not None],
             "recent_failures": [dict(row) for row in recent_failures if row is not None],
