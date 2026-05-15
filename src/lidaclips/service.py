@@ -101,8 +101,6 @@ class LidaClipsService:
                 summary["search_errors"] += 1
                 if self._is_youtube_auth_block(exc):
                     summary["youtube_auth_blocked"] += 1
-                    self.index.set_sync_paused(True)
-                    break
                 continue
 
             best_candidate, best_decision = self._score_candidates(target, candidates)
@@ -139,8 +137,6 @@ class LidaClipsService:
                 summary["download_errors"] += 1
                 if self._is_youtube_auth_block(exc):
                     summary["youtube_auth_blocked"] += 1
-                    self.index.set_sync_paused(True)
-                    break
                 continue
 
             clip_id = self.index.record_clip(

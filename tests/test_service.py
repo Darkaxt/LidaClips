@@ -53,6 +53,23 @@ class ProxyFailingSearch:
         )
 
 
+class AuthBlockedSearch:
+    def search(self, target):
+        if target.lidarr_track_id == 42:
+            raise RuntimeError(
+                "ERROR: [youtube] abc123: Sign in to confirm your age. "
+                "This video may be inappropriate for some users. "
+                "Use --cookies-from-browser or --cookies for the authentication."
+            )
+        return [
+            Candidate(
+                video_id="accepted",
+                title=f"{target.artist} - {target.title} (Official Music Video)",
+                webpage_url="https://example.test/accepted",
+            )
+        ]
+
+
 class FakeDownloader:
     def __init__(self, file_path):
         self.file_path = file_path
@@ -65,12 +82,14 @@ class FakeDownloader:
         return {"file_path": self.file_path, "mime_type": "video/mp4"}
 
 
-class AuthBlockedDownloader:
+class AuthBlockedThenSuccessfulDownloader:
     def __init__(self):
         self.downloads = []
 
     def download(self, target, candidate):
         self.downloads.append((target, candidate))
+        if target.lidarr_track_id != 42:
+            return {"file_path": "/unused/clip.mp4", "mime_type": "video/mp4"}
         raise RuntimeError(
             "ERROR: [youtube] abc123: Sign in to confirm you’re not a bot. "
             "Use --cookies-from-browser or --cookies for the authentication."
@@ -489,9 +508,9 @@ class ServiceTests(unittest.TestCase):
         self.assertIsNone(index.get_failure(42))
         self.assertIsNone(index.get_failure(43))
 
-    def test_sync_once_pauses_after_youtube_auth_block_download_error(self):
+    def test_sync_once_records_youtube_auth_block_download_error_without_pausing(self):
         index = ClipIndex(":memory:")
-        downloader = AuthBlockedDownloader()
+        downloader = AuthBlockedThenSuccessfulDownloader()
         service = LidaClipsService(
             index=index,
             lidarr_client=FakeLidarr([self.make_target(), self.make_other_target()]),
@@ -513,10 +532,34 @@ class ServiceTests(unittest.TestCase):
 
         self.assertEqual(summary["download_errors"], 1)
         self.assertEqual(summary["youtube_auth_blocked"], 1)
-        self.assertTrue(index.get_sync_paused())
-        self.assertEqual(len(downloader.downloads), 1)
+        self.assertEqual(summary["downloaded"], 1)
+        self.assertFalse(index.get_sync_paused())
+        self.assertEqual(len(downloader.downloads), 2)
         self.assertTrue(index.get_failure(42)["reason"].startswith("download_error: "))
         self.assertIsNone(index.get_failure(43))
+
+    def test_sync_once_records_youtube_auth_block_search_error_without_pausing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index = ClipIndex(":memory:")
+            downloader = FakeDownloader(os.path.join(temp_dir, "clip.mp4"))
+            service = LidaClipsService(
+                index=index,
+                lidarr_client=FakeLidarr([self.make_target(), self.make_other_target()]),
+                candidate_search=AuthBlockedSearch(),
+                scorer=FakeScorer(),
+                downloader=downloader,
+                logger=Mock(),
+            )
+
+            summary = service.sync_once()
+
+            self.assertEqual(summary["processed"], 2)
+            self.assertEqual(summary["search_errors"], 1)
+            self.assertEqual(summary["youtube_auth_blocked"], 1)
+            self.assertEqual(summary["downloaded"], 1)
+            self.assertFalse(index.get_sync_paused())
+            self.assertTrue(index.get_failure(42)["reason"].startswith("candidate_search_error: "))
+            self.assertIsNone(index.get_failure(43))
 
     def test_sync_once_reconciles_completed_clip_to_audio_matching_filename(self):
         with tempfile.TemporaryDirectory() as temp_dir:
