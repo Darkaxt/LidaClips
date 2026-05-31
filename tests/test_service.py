@@ -70,6 +70,19 @@ class AuthBlockedSearch:
         ]
 
 
+class RotatingSearch:
+    def search(self, target):
+        if target.lidarr_track_id == 101:
+            return []
+        return [
+            Candidate(
+                video_id=f"accepted-{target.lidarr_track_id}",
+                title=f"{target.artist} - {target.title} (Official Music Video)",
+                webpage_url=f"https://example.test/{target.lidarr_track_id}",
+            )
+        ]
+
+
 class FakeDownloader:
     def __init__(self, file_path):
         self.file_path = file_path
@@ -172,6 +185,21 @@ class ServiceTests(unittest.TestCase):
             absolute_track_number=1,
             duration=180,
             source_file_path="/music/other.flac",
+        )
+
+    def make_named_target(self, lidarr_track_id, artist, album="Album", title="Song", track_number=1):
+        return ClipTarget(
+            lidarr_track_id=lidarr_track_id,
+            artist_id=lidarr_track_id,
+            album_id=lidarr_track_id,
+            artist=artist,
+            album=album,
+            album_year=2024,
+            title=title,
+            track_number=str(track_number),
+            absolute_track_number=track_number,
+            duration=180,
+            source_file_path=f"/music/{artist}/{title}.flac",
         )
 
     def test_sync_once_records_downloaded_official_clip(self):
@@ -436,6 +464,40 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(summary["processed"], 1)
             self.assertEqual(summary["downloaded"], 1)
             self.assertEqual(downloader.downloads[0][0].artist, "The Example Band")
+
+    def test_sync_once_rotates_past_failed_targets_until_full_queue_wraps(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index = ClipIndex(":memory:")
+            downloader = FakeDownloader(os.path.join(temp_dir, "clip.mp4"))
+            targets = [
+                self.make_named_target(103, "Charlie Artist", title="Third"),
+                self.make_named_target(101, "Alpha Artist", title="First"),
+                self.make_named_target(102, "Bravo Artist", title="Second"),
+            ]
+            service = LidaClipsService(
+                index=index,
+                lidarr_client=FakeLidarr(targets),
+                candidate_search=RotatingSearch(),
+                scorer=FakeScorer(),
+                downloader=downloader,
+                max_targets_per_run=1,
+                logger=Mock(),
+            )
+
+            first = service.sync_once()
+            second = service.sync_once()
+            third = service.sync_once()
+            fourth = service.sync_once()
+
+            self.assertEqual(first["processed"], 1)
+            self.assertEqual(first["no_match"], 1)
+            self.assertEqual(index.get_failure(101)["reason"], "no_match")
+            self.assertEqual(second["downloaded"], 1)
+            self.assertEqual(downloader.downloads[0][0].lidarr_track_id, 102)
+            self.assertEqual(third["downloaded"], 1)
+            self.assertEqual(downloader.downloads[1][0].lidarr_track_id, 103)
+            self.assertEqual(fourth["no_match"], 1)
+            self.assertEqual(index.get_failure(101)["reason"], "no_match")
 
     def test_sync_once_records_accepted_candidate_without_download_when_disabled(self):
         index = ClipIndex(":memory:")

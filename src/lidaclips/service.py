@@ -66,6 +66,7 @@ class LidaClipsService:
             "proxy_unavailable": 0,
             "reconciled": 0,
             "reconcile_errors": 0,
+            "queue_wrapped": 0,
         }
         targets = self._collect_present_targets()
         reconciled, reconcile_errors = self._reconcile_completed_clip_paths()
@@ -84,6 +85,7 @@ class LidaClipsService:
                     if planned.mode == "missing":
                         self.index.record_no_match(target.lidarr_track_id, "navidrome_missing")
                     summary["navidrome_missing"] += 1
+                    self._advance_queue_cursor(planned)
                     continue
                 self.index.upsert_track(target, navidrome_song_id=song_id)
 
@@ -101,6 +103,7 @@ class LidaClipsService:
                 summary["search_errors"] += 1
                 if self._is_youtube_auth_block(exc):
                     summary["youtube_auth_blocked"] += 1
+                self._advance_queue_cursor(planned)
                 continue
 
             best_candidate, best_decision = self._score_candidates(target, candidates)
@@ -111,16 +114,19 @@ class LidaClipsService:
                 else:
                     self.index.record_no_match(target.lidarr_track_id, "no_match")
                     summary["no_match"] += 1
+                self._advance_queue_cursor(planned)
                 continue
 
             if planned.mode == "upgrade" and not self._should_upgrade(planned.existing_clip, best_decision):
                 summary["no_upgrade"] += 1
+                self._advance_queue_cursor(planned)
                 continue
 
             if not self.download_enabled:
                 if planned.mode == "missing":
                     self.index.record_no_match(target.lidarr_track_id, "download_disabled")
                 summary["download_disabled"] += 1
+                self._advance_queue_cursor(planned)
                 continue
 
             try:
@@ -137,6 +143,7 @@ class LidaClipsService:
                 summary["download_errors"] += 1
                 if self._is_youtube_auth_block(exc):
                     summary["youtube_auth_blocked"] += 1
+                self._advance_queue_cursor(planned)
                 continue
 
             clip_id = self.index.record_clip(
@@ -158,10 +165,11 @@ class LidaClipsService:
             if planned.mode == "upgrade" and planned.existing_clip is not None:
                 self._mark_replaced_and_delete_old(planned.existing_clip, clip_id, download_result["file_path"])
                 summary["upgraded"] += 1
+            self._advance_queue_cursor(planned)
         return summary
 
     def collect_planned_targets(self) -> list[ClipTarget]:
-        summary = {"skipped_by_allowlist": 0, "limited": 0}
+        summary = {"skipped_by_allowlist": 0, "limited": 0, "queue_wrapped": 0}
         return [planned.target for planned in self._filter_planned_targets(self._plan_targets(self._collect_present_targets()), summary)]
 
     def _collect_present_targets(self) -> list[ClipTarget]:
@@ -181,7 +189,7 @@ class LidaClipsService:
                 missing.append(PlannedTarget(target=target, mode="missing"))
             elif active_clip.get("quality_tier") == "fallback":
                 upgrades.append(PlannedTarget(target=target, mode="upgrade", existing_clip=active_clip))
-        return missing + upgrades
+        return missing or upgrades
 
     def _filter_planned_targets(self, planned_targets: list[PlannedTarget], summary: dict[str, int]) -> list[PlannedTarget]:
         filtered = planned_targets
@@ -191,12 +199,48 @@ class LidaClipsService:
             ]
             summary["skipped_by_allowlist"] = len(planned_targets) - len(filtered)
 
+        filtered = self._rotate_planned_targets(filtered, summary)
+
         if self.max_targets_per_run is not None and self.max_targets_per_run >= 0:
             limit = int(self.max_targets_per_run)
             if len(filtered) > limit:
                 summary["limited"] = len(filtered) - limit
                 filtered = filtered[:limit]
         return filtered
+
+    def _rotate_planned_targets(self, planned_targets: list[PlannedTarget], summary: dict[str, int]) -> list[PlannedTarget]:
+        if not planned_targets:
+            return []
+        sorted_targets = sorted(planned_targets, key=self._planned_sort_key)
+        cursor = self.index.get_queue_cursor("acquisition") if hasattr(self.index, "get_queue_cursor") else None
+        cursor_key = cursor.get("last_sort_key") if cursor else None
+        if not isinstance(cursor_key, list):
+            return sorted_targets
+        for index, planned in enumerate(sorted_targets):
+            if self._planned_sort_key(planned) > cursor_key:
+                return sorted_targets[index:] + sorted_targets[:index]
+        summary["queue_wrapped"] = summary.get("queue_wrapped", 0) + 1
+        return sorted_targets
+
+    def _advance_queue_cursor(self, planned: PlannedTarget) -> None:
+        if hasattr(self.index, "set_queue_cursor"):
+            self.index.set_queue_cursor(
+                "acquisition",
+                self._planned_sort_key(planned),
+                planned.target.lidarr_track_id,
+            )
+
+    def _planned_sort_key(self, planned: PlannedTarget) -> list[Any]:
+        target = planned.target
+        mode_rank = 0 if planned.mode == "missing" else 1
+        return [
+            mode_rank,
+            normalize_text(target.artist),
+            normalize_text(target.album),
+            int(target.absolute_track_number or 0),
+            normalize_text(target.title),
+            int(target.lidarr_track_id),
+        ]
 
     def _score_candidates(self, target: ClipTarget, candidates: list[Candidate]) -> tuple[Candidate | None, MatchDecision | None]:
         best_candidate = None

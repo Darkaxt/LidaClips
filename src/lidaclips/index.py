@@ -88,6 +88,13 @@ class ClipIndex:
                     sync_paused INTEGER NOT NULL DEFAULT 0,
                     updated_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS queue_state (
+                    name TEXT PRIMARY KEY,
+                    last_sort_key TEXT NOT NULL,
+                    last_lidarr_track_id INTEGER,
+                    updated_at TEXT NOT NULL
+                );
                 """
             )
             self._migrate_schema()
@@ -350,6 +357,34 @@ class ClipIndex:
                     updated_at = excluded.updated_at
                 """,
                 (1 if paused else 0, utc_now()),
+            )
+
+    def get_queue_cursor(self, name: str) -> dict[str, Any] | None:
+        row = self.connection.execute(
+            "SELECT * FROM queue_state WHERE name = ?",
+            (name,),
+        ).fetchone()
+        if row is None:
+            return None
+        payload = dict(row)
+        try:
+            payload["last_sort_key"] = json.loads(payload["last_sort_key"])
+        except (TypeError, json.JSONDecodeError):
+            payload["last_sort_key"] = None
+        return payload
+
+    def set_queue_cursor(self, name: str, last_sort_key: list[Any], lidarr_track_id: int) -> None:
+        with self.connection:
+            self.connection.execute(
+                """
+                INSERT INTO queue_state (name, last_sort_key, last_lidarr_track_id, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    last_sort_key = excluded.last_sort_key,
+                    last_lidarr_track_id = excluded.last_lidarr_track_id,
+                    updated_at = excluded.updated_at
+                """,
+                (name, json.dumps(last_sort_key, sort_keys=True), lidarr_track_id, utc_now()),
             )
 
     def dashboard_summary(self, recent_limit: int = 50) -> dict[str, Any]:
