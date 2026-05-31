@@ -7,6 +7,9 @@ from typing import Any
 from .models import ClipTarget
 
 
+DEFERRED_FAILURE_REASONS = ("navidrome_missing",)
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -433,16 +436,20 @@ class ClipIndex:
             (recent_limit,),
         ).fetchall()
         recent_failures = self.connection.execute(
-            """
+            f"""
             SELECT failures.lidarr_track_id, failures.reason, failures.retry_after, failures.updated_at,
                    tracks.artist, tracks.album, tracks.title AS track_title
             FROM failures
             LEFT JOIN tracks ON tracks.lidarr_track_id = failures.lidarr_track_id
+            WHERE failures.reason NOT IN ({",".join("?" for _ in DEFERRED_FAILURE_REASONS)})
             ORDER BY failures.updated_at DESC
             LIMIT ?
             """,
-            (recent_limit,),
+            (*DEFERRED_FAILURE_REASONS, recent_limit),
         ).fetchall()
+        issue_failures = {
+            reason: count for reason, count in failure_by_reason.items() if reason not in DEFERRED_FAILURE_REASONS
+        }
         active_clips = sum(active_by_tier.values())
         tracked_tracks = self.connection.execute("SELECT COUNT(*) AS count FROM tracks").fetchone()["count"]
         coverage_percent = round((active_clips / tracked_tracks) * 100, 1) if tracked_tracks else 0.0
@@ -453,8 +460,9 @@ class ClipIndex:
             "official_clips": active_by_tier.get("official", 0),
             "fallback_clips": active_by_tier.get("fallback", 0),
             "replaced_clips": status_by_name.get("replaced", 0),
-            "failures": sum(failure_by_reason.values()),
+            "failures": sum(issue_failures.values()),
             "no_match": failure_by_reason.get("no_match", 0),
+            "navidrome_missing": failure_by_reason.get("navidrome_missing", 0),
             "proxy_unavailable": failure_by_reason.get("proxy_unavailable", 0),
             "sync_paused": self.get_sync_paused(),
             "recent_clips": [self._clip_row_to_dict(row) for row in recent_clips if row is not None],

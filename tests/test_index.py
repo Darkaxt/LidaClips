@@ -197,6 +197,23 @@ class IndexMigrationTests(unittest.TestCase):
         self.assertEqual(summary["recent_failures"][0]["track_title"], "Static")
         self.assertEqual({clip["id"] for clip in summary["recent_clips"]}, {1, new_id})
 
+    def test_dashboard_summary_treats_navidrome_missing_as_deferred_not_failure(self):
+        index = ClipIndex(":memory:")
+        no_match_target = self.make_target(lidarr_track_id=44, title="Static")
+        deferred_target = self.make_target(lidarr_track_id=45, title="Not Indexed Yet")
+        index.upsert_track(no_match_target)
+        index.upsert_track(deferred_target)
+        index.record_no_match(44, "no_match")
+        index.record_no_match(45, "navidrome_missing")
+
+        summary = index.dashboard_summary()
+
+        self.assertEqual(summary["failures"], 1)
+        self.assertEqual(summary["no_match"], 1)
+        self.assertEqual(summary["navidrome_missing"], 1)
+        self.assertEqual(index.get_failure(45)["reason"], "navidrome_missing")
+        self.assertEqual([row["lidarr_track_id"] for row in summary["recent_failures"]], [44])
+
     def test_dashboard_summary_reports_zero_coverage_without_tracks(self):
         index = ClipIndex(":memory:")
 
