@@ -55,7 +55,10 @@ def create_app(index: ClipIndex, api_key: str = "", service: Any | None = None) 
     @app.get("/api/v1/dashboard")
     @require_api_key
     def dashboard():
-        return jsonify(public_dashboard(index.dashboard_summary()))
+        payload = public_dashboard(index.dashboard_summary())
+        if _truthy_query_arg(request.args.get("include_queue")):
+            payload["download_queue"] = _download_queue_payload()
+        return jsonify(payload)
 
     @app.get("/api/v1/control")
     @require_api_key
@@ -135,6 +138,15 @@ def create_app(index: ClipIndex, api_key: str = "", service: Any | None = None) 
         sync_running = bool(runtime is not None and getattr(runtime, "sync_status", None) == "running")
         return {"sync_paused": index.get_sync_paused(), "sync_running": sync_running}
 
+    def _download_queue_payload() -> list[dict[str, Any]]:
+        service = app.config.get("LIDACLIPS_SERVICE")
+        if service is not None and hasattr(service, "collect_planned_targets"):
+            return [public_download_queue_item(target) for target in service.collect_planned_targets()]
+
+        runtime = app.config.get("LIDACLIPS_RUNTIME")
+        targets = getattr(runtime, "last_targets", []) if runtime is not None else []
+        return [public_download_queue_item(target) for target in targets]
+
     return app
 
 
@@ -177,6 +189,35 @@ def public_clip(row: dict[str, Any]) -> dict[str, Any]:
         "updated_at": row.get("updated_at"),
         "evidence": row["evidence"],
     }
+
+
+def public_download_queue_item(target: Any) -> dict[str, Any]:
+    if isinstance(target, dict):
+        title = target.get("title") or target.get("track")
+        return {
+            "lidarr_track_id": target.get("lidarr_track_id"),
+            "artist": target.get("artist"),
+            "album": target.get("album"),
+            "track": title,
+            "title": title,
+            "duration": target.get("duration"),
+            "status": target.get("status") or "queued",
+        }
+
+    title = getattr(target, "title", None)
+    return {
+        "lidarr_track_id": getattr(target, "lidarr_track_id", None),
+        "artist": getattr(target, "artist", None),
+        "album": getattr(target, "album", None),
+        "track": title,
+        "title": title,
+        "duration": getattr(target, "duration", None),
+        "status": "queued",
+    }
+
+
+def _truthy_query_arg(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _subsonic_video(row: dict[str, Any]) -> dict[str, Any]:

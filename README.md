@@ -159,6 +159,7 @@ Custom clip API:
 - `GET /api/v1/ping`
 - `GET /api/v1/health`
 - `GET /api/v1/dashboard`
+- `GET /api/v1/dashboard?include_queue=true`
 - `GET /api/v1/control`
 - `POST /api/v1/control`
 - `GET /api/v1/clips?artist=&album=&track=`
@@ -172,7 +173,7 @@ OpenSubsonic-style video compatibility endpoints:
 - `GET /rest/getVideoInfo.view?id={clip_id}&f=json`
 - `GET /rest/stream.view?id={clip_id}`
 
-`/api/v1/health` checks the SQLite DB, staging path, clips path, Lidarr, and optional Navidrome. It is API-key protected. The OpenSubsonic-style endpoints return familiar video-shaped responses, but authentication is still the LidaClips API key rather than full Subsonic token auth.
+`/api/v1/health` checks the SQLite DB, staging path, clips path, Lidarr, and optional Navidrome. It is API-key protected. `GET /api/v1/dashboard?include_queue=true` adds a `download_queue` array with the current planned clip targets for clients that want an Activity or queue view. The OpenSubsonic-style endpoints return familiar video-shaped responses, but authentication is still the LidaClips API key rather than full Subsonic token auth.
 
 Custom clip responses include `file_name`, which is the resolved clip filename without the full server path. They also include `quality_tier` for diagnostics; clients can ignore it and play fallback clips through the same stream path.
 

@@ -21,6 +21,16 @@ class FakeHealthService:
         }
 
 
+class FakeQueueService(FakeHealthService):
+    def __init__(self, targets):
+        self.targets = targets
+        self.collect_calls = 0
+
+    def collect_planned_targets(self):
+        self.collect_calls += 1
+        return self.targets
+
+
 class ApiTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -110,6 +120,32 @@ class ApiTests(unittest.TestCase):
         self.assertIn("created_at", payload["recent_clips"][0])
         self.assertEqual(payload["recent_clips"][0]["file_name"], "clip.mp4")
         self.assertNotIn("file_path", payload["recent_clips"][0])
+
+    def test_dashboard_can_include_current_download_queue(self):
+        queue_service = FakeQueueService([self.target])
+        app = create_app(self.index, api_key="secret", service=queue_service)
+        client = app.test_client()
+
+        response = client.get("/api/v1/dashboard?include_queue=true", headers=self.headers())
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(queue_service.collect_calls, 1)
+        self.assertEqual(
+            [
+                {
+                    "lidarr_track_id": 42,
+                    "artist": "The Example Band",
+                    "album": "Neon Nights",
+                    "track": "Bright Lights",
+                    "title": "Bright Lights",
+                    "duration": 240,
+                    "status": "queued",
+                }
+            ],
+            payload["download_queue"],
+        )
+        self.assertNotIn("source_file_path", payload["download_queue"][0])
 
     def test_control_requires_api_key_and_toggles_sync_pause(self):
         unauthorized = self.client.get("/api/v1/control")
