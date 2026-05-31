@@ -31,6 +31,32 @@ class FakeSearch:
         return self.candidates
 
 
+class TrackingSearch:
+    def __init__(self):
+        self.searched_ids = []
+
+    def search(self, target):
+        self.searched_ids.append(target.lidarr_track_id)
+        return [
+            Candidate(
+                video_id=f"accepted-{target.lidarr_track_id}",
+                title=f"{target.artist} - {target.title} (Official Music Video)",
+                webpage_url=f"https://example.test/{target.lidarr_track_id}",
+            )
+        ]
+
+
+class TitleMissingNavidrome:
+    def __init__(self, missing_titles):
+        self.missing_titles = set(missing_titles)
+
+    def find_song_id(self, _artist, _album, title):
+        return title
+
+    def is_song_present(self, song_id):
+        return song_id not in self.missing_titles
+
+
 class FailingThenSuccessfulSearch:
     def search(self, target):
         if target.lidarr_track_id == 42:
@@ -464,6 +490,36 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(summary["processed"], 1)
             self.assertEqual(summary["downloaded"], 1)
             self.assertEqual(downloader.downloads[0][0].artist, "The Example Band")
+
+    def test_sync_once_does_not_count_navidrome_missing_toward_youtube_search_limit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index = ClipIndex(":memory:")
+            downloader = FakeDownloader(os.path.join(temp_dir, "clip.mp4"))
+            search = TrackingSearch()
+            targets = [
+                self.make_named_target(101, "Alpha Artist", title="Missing From Navidrome"),
+                self.make_named_target(102, "Bravo Artist", title="Present One"),
+                self.make_named_target(103, "Charlie Artist", title="Present Two"),
+            ]
+            service = LidaClipsService(
+                index=index,
+                lidarr_client=FakeLidarr(targets),
+                candidate_search=search,
+                scorer=FakeScorer(),
+                downloader=downloader,
+                navidrome_client=TitleMissingNavidrome({"Missing From Navidrome"}),
+                max_targets_per_run=1,
+                logger=Mock(),
+            )
+
+            summary = service.sync_once()
+
+            self.assertEqual(summary["navidrome_missing"], 1)
+            self.assertEqual(summary["youtube_searches"], 1)
+            self.assertEqual(summary["processed"], 2)
+            self.assertEqual(summary["limited"], 1)
+            self.assertEqual(search.searched_ids, [102])
+            self.assertEqual(downloader.downloads[0][0].lidarr_track_id, 102)
 
     def test_sync_once_rotates_past_failed_targets_until_full_queue_wraps(self):
         with tempfile.TemporaryDirectory() as temp_dir:

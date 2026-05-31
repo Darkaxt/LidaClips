@@ -57,6 +57,7 @@ class LidaClipsService:
             "skipped_by_allowlist": 0,
             "limited": 0,
             "processed": 0,
+            "youtube_searches": 0,
             "upgrade_targets": 0,
             "upgraded": 0,
             "no_upgrade": 0,
@@ -74,10 +75,15 @@ class LidaClipsService:
         summary["reconcile_errors"] = reconcile_errors
         summary["targets"] = len(targets)
         planned_targets = self._plan_targets(targets)
-        planned_targets = self._filter_planned_targets(planned_targets, summary)
-        summary["processed"] = len(planned_targets)
-        summary["upgrade_targets"] = sum(1 for item in planned_targets if item.mode == "upgrade")
-        for planned in planned_targets:
+        planned_targets = self._filter_planned_targets(planned_targets, summary, apply_limit=False)
+        youtube_searches = 0
+        for index, planned in enumerate(planned_targets):
+            if self._search_cap_reached(youtube_searches):
+                summary["limited"] = len(planned_targets) - index
+                break
+            summary["processed"] += 1
+            if planned.mode == "upgrade":
+                summary["upgrade_targets"] += 1
             target = planned.target
             if self.navidrome_client is not None:
                 song_id = self.navidrome_client.find_song_id(target.artist, target.album, target.title)
@@ -90,6 +96,8 @@ class LidaClipsService:
                 self.index.upsert_track(target, navidrome_song_id=song_id)
 
             try:
+                youtube_searches += 1
+                summary["youtube_searches"] = youtube_searches
                 candidates = self.candidate_search.search(target)
             except Exception as exc:
                 if self._is_proxy_unavailable(exc):
@@ -191,7 +199,12 @@ class LidaClipsService:
                 upgrades.append(PlannedTarget(target=target, mode="upgrade", existing_clip=active_clip))
         return missing or upgrades
 
-    def _filter_planned_targets(self, planned_targets: list[PlannedTarget], summary: dict[str, int]) -> list[PlannedTarget]:
+    def _filter_planned_targets(
+        self,
+        planned_targets: list[PlannedTarget],
+        summary: dict[str, int],
+        apply_limit: bool = True,
+    ) -> list[PlannedTarget]:
         filtered = planned_targets
         if self.sync_artist_allowlist:
             filtered = [
@@ -201,12 +214,17 @@ class LidaClipsService:
 
         filtered = self._rotate_planned_targets(filtered, summary)
 
-        if self.max_targets_per_run is not None and self.max_targets_per_run >= 0:
+        if apply_limit and self.max_targets_per_run is not None and self.max_targets_per_run >= 0:
             limit = int(self.max_targets_per_run)
             if len(filtered) > limit:
                 summary["limited"] = len(filtered) - limit
                 filtered = filtered[:limit]
         return filtered
+
+    def _search_cap_reached(self, youtube_searches: int) -> bool:
+        if self.max_targets_per_run is None or self.max_targets_per_run < 0:
+            return False
+        return youtube_searches >= int(self.max_targets_per_run)
 
     def _rotate_planned_targets(self, planned_targets: list[PlannedTarget], summary: dict[str, int]) -> list[PlannedTarget]:
         if not planned_targets:
