@@ -140,6 +140,47 @@ class IndexMigrationTests(unittest.TestCase):
         self.assertIsNone(index.get_clip_by_id(old_id))
         self.assertEqual(index.get_clip_by_id(old_id, include_replaced=True)["status"], "replaced")
 
+    def test_rejected_clips_are_not_returned_by_public_lookups(self):
+        index = ClipIndex(":memory:")
+        target = self.make_target()
+        index.upsert_track(target)
+        clip_id = index.record_clip(
+            lidarr_track_id=42,
+            video_id="static-art",
+            source_url="https://example.test/static",
+            title="Static",
+            file_path="/clips/static.mp4",
+            mime_type="video/mp4",
+            score=92.0,
+            evidence={"quality_tier": "fallback"},
+            quality_tier="fallback",
+        )
+
+        index.mark_clip_rejected(clip_id, "static_visuals")
+
+        self.assertIsNone(index.get_clip_by_track(42))
+        self.assertIsNone(index.get_clip_by_id(clip_id))
+        rejected = index.get_clip_by_id(clip_id, include_replaced=True)
+        self.assertEqual(rejected["status"], "rejected")
+        self.assertEqual(index.get_failure(42)["reason"], "static_visuals")
+
+    def test_static_candidate_rejections_can_be_reused_by_scorer(self):
+        index = ClipIndex(":memory:")
+        target = self.make_target()
+        index.upsert_track(target)
+        index.record_candidate(
+            lidarr_track_id=42,
+            video_id="static-art",
+            source_url="https://example.test/static",
+            title="Static",
+            score=0.0,
+            accepted=False,
+            evidence={"rejection_reason": "static_visuals"},
+            quality_tier="rejected",
+        )
+
+        self.assertEqual(index.rejected_video_ids(42, "static_visuals"), {"static-art"})
+
     def test_dashboard_summary_counts_active_clips_and_recent_failures(self):
         index = ClipIndex(":memory:")
         official_target = self.make_target(lidarr_track_id=42, title="Bright Lights")

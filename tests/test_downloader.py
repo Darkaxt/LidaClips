@@ -1,3 +1,4 @@
+import glob
 import os
 import socketserver
 import subprocess
@@ -7,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from lidaclips.downloader import ClipDownloader
+from lidaclips.media_validation import StaticVideoError
 from lidaclips.models import ClipTarget
 from lidaclips.scoring import Candidate
 from lidaclips.storage import ClipStorage
@@ -45,6 +47,11 @@ class ProxyHealthHandler(socketserver.BaseRequestHandler):
         request = self.request.recv(4096)
         if request.startswith(b"CONNECT "):
             self.request.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+
+
+class StaticRejectingValidator:
+    def validate(self, _path):
+        raise StaticVideoError("static_visuals", {"static": True})
 
 
 class DownloaderTests(unittest.TestCase):
@@ -216,6 +223,47 @@ class DownloaderTests(unittest.TestCase):
 
             with open(result["file_path"], "rb") as handle:
                 self.assertEqual(handle.read(), b"compatible")
+
+    def test_download_rejects_static_video_before_finalizing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            created = []
+
+            def factory(options):
+                instance = FakeYtDlp(options)
+                created.append(instance)
+                return instance
+
+            target = ClipTarget(
+                lidarr_track_id=42,
+                artist_id=1,
+                album_id=10,
+                artist="The Example Band",
+                album="Neon Nights",
+                album_year=2020,
+                title="Bright Lights",
+                track_number="1",
+                absolute_track_number=1,
+                duration=240,
+                source_file_path="/music/song.flac",
+            )
+            candidate = Candidate(video_id="abc123", title="Official", webpage_url="https://www.youtube.com/watch?v=abc123")
+            storage = ClipStorage(
+                output_mode="clips_lane",
+                output_path=os.path.join(temp_dir, "clips"),
+                staging_path=os.path.join(temp_dir, "staging"),
+            )
+            downloader = ClipDownloader(
+                storage=storage,
+                ytdlp_factory=factory,
+                video_validator=StaticRejectingValidator(),
+            )
+
+            with self.assertRaises(StaticVideoError):
+                downloader.download(target, candidate)
+
+            final_path = os.path.join(temp_dir, "clips", "The Example Band", "Neon Nights (2020)", "song.mp4")
+            self.assertFalse(os.path.exists(final_path))
+            self.assertEqual(glob.glob(os.path.join(temp_dir, "staging", "*")), [])
 
     def test_download_passes_po_token_args_only_to_primary_dash_attempt(self):
         with tempfile.TemporaryDirectory() as temp_dir:

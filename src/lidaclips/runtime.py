@@ -10,6 +10,7 @@ from .candidate_search import YtDlpCandidateSearch
 from .downloader import ClipDownloader
 from .index import ClipIndex
 from .lidarr_client import LidarrClient
+from .media_validation import MotionValidator
 from .navidrome_client import NavidromeClient
 from .scoring import ClipScorer
 from .service import LidaClipsService
@@ -218,6 +219,7 @@ def build_runtime(config_folder: str = "config") -> Runtime:
             youtube_enable_hls_fallback=settings.youtube_enable_hls_fallback,
             youtube_proxy_url=settings.youtube_proxy_url,
             path_conflict_checker=lambda path, target: index.path_conflicts(path, target.lidarr_track_id),
+            video_validator=MotionValidator(),
         ),
         navidrome_client=navidrome_client,
         sync_artist_allowlist=settings.sync_artist_allowlist,

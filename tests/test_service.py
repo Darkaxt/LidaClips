@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import Mock
 
 from lidaclips.index import ClipIndex
+from lidaclips.media_validation import StaticVideoError
 from lidaclips.models import ClipTarget
 from lidaclips.scoring import Candidate, ClipScorer
 from lidaclips.service import LidaClipsService
@@ -116,6 +117,16 @@ class FakeDownloader:
 
     def download(self, target, candidate):
         self.downloads.append((target, candidate))
+        with open(self.file_path, "wb") as handle:
+            handle.write(b"video")
+        return {"file_path": self.file_path, "mime_type": "video/mp4"}
+
+
+class StaticThenSuccessfulDownloader(FakeDownloader):
+    def download(self, target, candidate):
+        self.downloads.append((target, candidate))
+        if candidate.video_id == "static-best":
+            raise StaticVideoError("static_visuals", {"static": True, "average_delta": 0.0})
         with open(self.file_path, "wb") as handle:
             handle.write(b"video")
         return {"file_path": self.file_path, "mime_type": "video/mp4"}
@@ -345,6 +356,31 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(summary["downloaded"], 1)
             self.assertEqual(downloader.downloads[0][1].video_id, "accepted-lower")
             self.assertEqual(index.get_clip_by_track(42)["video_id"], "accepted-lower")
+
+    def test_sync_once_rejects_static_download_and_tries_next_candidate(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            index = ClipIndex(":memory:")
+            downloader = StaticThenSuccessfulDownloader(os.path.join(temp_dir, "clip.mp4"))
+            service = LidaClipsService(
+                index=index,
+                lidarr_client=FakeLidarr([self.make_target()]),
+                candidate_search=FakeSearch(
+                    [
+                        Candidate(video_id="static-best", title="Bright Lights", webpage_url="https://example.test/static"),
+                        Candidate(video_id="fallback-low", title="Bright Lights", webpage_url="https://example.test/fallback"),
+                    ]
+                ),
+                scorer=FakeScorer(),
+                downloader=downloader,
+            )
+
+            summary = service.sync_once()
+
+            self.assertEqual(summary["static_rejected"], 1)
+            self.assertEqual(summary["downloaded"], 1)
+            self.assertEqual([candidate.video_id for _target, candidate in downloader.downloads], ["static-best", "fallback-low"])
+            self.assertEqual(index.get_clip_by_track(42)["video_id"], "fallback-low")
+            self.assertIn("static-best", index.rejected_video_ids(42, "static_visuals"))
 
     def test_sync_once_upgrades_existing_fallback_to_official_and_deletes_old_file(self):
         with tempfile.TemporaryDirectory() as temp_dir:

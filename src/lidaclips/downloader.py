@@ -29,6 +29,7 @@ class ClipDownloader:
         youtube_enable_hls_fallback: bool = True,
         youtube_proxy_url: str = "",
         path_conflict_checker: Callable[[str, ClipTarget], bool] | None = None,
+        video_validator: object | None = None,
     ):
         self.storage = storage
         self.preferred_container = preferred_container.lstrip(".")
@@ -42,6 +43,7 @@ class ClipDownloader:
         self.youtube_enable_hls_fallback = bool(youtube_enable_hls_fallback)
         self.youtube_proxy_url = youtube_proxy_url.strip()
         self.path_conflict_checker = path_conflict_checker
+        self.video_validator = video_validator
 
     def download(self, target: ClipTarget, candidate: Candidate) -> dict[str, str]:
         staged_template = self.storage.staging_file(candidate.video_id, f".%(ext)s")
@@ -59,12 +61,24 @@ class ClipDownloader:
             raise errors[-1]
 
         staged_path = self._ensure_container_compatibility(self._find_staged_file(staged_template))
+        try:
+            self._validate_video(staged_path)
+        except Exception:
+            self._clear_staged_files(staged_template)
+            raise
         conflict_checker = None
         if self.path_conflict_checker is not None:
             conflict_checker = lambda path: self.path_conflict_checker(path, target)
         final_path = self.storage.final_path(target, candidate.video_id, f".{self.preferred_container}", conflict_checker=conflict_checker)
         file_path = self.storage.finalize(staged_path, final_path)
         return {"file_path": file_path, "mime_type": f"video/{self.preferred_container}"}
+
+    def _validate_video(self, staged_path: str) -> None:
+        if self.video_validator is None:
+            return
+        validate = getattr(self.video_validator, "validate", None)
+        if validate is not None:
+            validate(staged_path)
 
     def _download_attempts(self) -> list[tuple[str, bool]]:
         attempts = [

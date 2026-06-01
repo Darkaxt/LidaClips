@@ -510,6 +510,28 @@ class ClipIndex:
         ).fetchall()
         return [self._clip_row_to_dict(row) for row in rows if row is not None]
 
+    def rejected_video_ids(self, lidarr_track_id: int, reason: str | None = None) -> set[str]:
+        rows = self.connection.execute(
+            """
+            SELECT video_id, evidence_json
+            FROM candidates
+            WHERE lidarr_track_id = ? AND accepted = 0 AND quality_tier = 'rejected'
+            """,
+            (lidarr_track_id,),
+        ).fetchall()
+        video_ids: set[str] = set()
+        for row in rows:
+            if reason is None:
+                video_ids.add(row["video_id"])
+                continue
+            try:
+                evidence = json.loads(row["evidence_json"] or "{}")
+            except json.JSONDecodeError:
+                evidence = {}
+            if evidence.get("rejection_reason") == reason:
+                video_ids.add(row["video_id"])
+        return video_ids
+
     def mark_clip_replaced(self, clip_id: int, replaced_by_clip_id: int) -> None:
         with self.connection:
             self.connection.execute(
@@ -519,6 +541,36 @@ class ClipIndex:
                 WHERE id = ?
                 """,
                 (replaced_by_clip_id, utc_now(), clip_id),
+            )
+
+    def mark_clip_rejected(self, clip_id: int, reason: str) -> None:
+        row = self.connection.execute(
+            "SELECT lidarr_track_id FROM clips WHERE id = ?",
+            (clip_id,),
+        ).fetchone()
+        if row is None:
+            return
+        lidarr_track_id = int(row["lidarr_track_id"])
+        now = utc_now()
+        with self.connection:
+            self.connection.execute(
+                """
+                UPDATE clips
+                SET status = 'rejected', updated_at = ?
+                WHERE id = ?
+                """,
+                (now, clip_id),
+            )
+            self.connection.execute(
+                """
+                INSERT INTO failures (lidarr_track_id, reason, retry_after, updated_at)
+                VALUES (?, ?, NULL, ?)
+                ON CONFLICT(lidarr_track_id) DO UPDATE SET
+                    reason = excluded.reason,
+                    retry_after = excluded.retry_after,
+                    updated_at = excluded.updated_at
+                """,
+                (lidarr_track_id, reason, now),
             )
 
     def _clip_row_to_dict(self, row: sqlite3.Row | None) -> dict[str, Any] | None:

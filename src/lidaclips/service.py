@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .index import ClipIndex
+from .media_validation import StaticVideoError
 from .models import ClipTarget
 from .scoring import Candidate, ClipScorer, MatchDecision
 from .text import normalize_text
@@ -64,6 +65,7 @@ class LidaClipsService:
             "download_disabled": 0,
             "search_errors": 0,
             "youtube_auth_blocked": 0,
+            "static_rejected": 0,
             "proxy_unavailable": 0,
             "reconciled": 0,
             "reconcile_errors": 0,
@@ -114,9 +116,9 @@ class LidaClipsService:
                 self._advance_queue_cursor(planned)
                 continue
 
-            best_candidate, best_decision = self._score_candidates(target, candidates)
+            ranked_candidates = self._score_candidates(target, candidates)
 
-            if best_candidate is None or best_decision is None:
+            if not ranked_candidates:
                 if planned.mode == "upgrade":
                     summary["no_upgrade"] += 1
                 else:
@@ -125,7 +127,14 @@ class LidaClipsService:
                 self._advance_queue_cursor(planned)
                 continue
 
-            if planned.mode == "upgrade" and not self._should_upgrade(planned.existing_clip, best_decision):
+            if planned.mode == "upgrade":
+                ranked_candidates = [
+                    (candidate, decision)
+                    for candidate, decision in ranked_candidates
+                    if self._should_upgrade(planned.existing_clip, decision)
+                ]
+
+            if not ranked_candidates:
                 summary["no_upgrade"] += 1
                 self._advance_queue_cursor(planned)
                 continue
@@ -137,43 +146,68 @@ class LidaClipsService:
                 self._advance_queue_cursor(planned)
                 continue
 
-            try:
-                download_result = self.downloader.download(target, best_candidate)
-            except Exception as exc:
-                if self._is_proxy_unavailable(exc):
-                    self.logger.exception("YouTube proxy unavailable while downloading %s - %s", target.artist, target.title)
-                    summary["proxy_unavailable"] += 1
-                    self.index.set_sync_paused(True)
+            completed_download = False
+            static_rejections_for_target = 0
+            abort_sync = False
+            for best_candidate, best_decision in ranked_candidates:
+                try:
+                    download_result = self.downloader.download(target, best_candidate)
+                except StaticVideoError as exc:
+                    self.logger.warning("Rejected static visual clip for %s - %s: %s", target.artist, target.title, best_candidate.video_id)
+                    self._record_static_candidate(target, best_candidate, best_decision, exc)
+                    summary["static_rejected"] += 1
+                    static_rejections_for_target += 1
+                    continue
+                except Exception as exc:
+                    if self._is_proxy_unavailable(exc):
+                        self.logger.exception("YouTube proxy unavailable while downloading %s - %s", target.artist, target.title)
+                        summary["proxy_unavailable"] += 1
+                        self.index.set_sync_paused(True)
+                        abort_sync = True
+                        break
+                    self.logger.exception("Clip download failed for %s - %s", target.artist, target.title)
+                    if planned.mode == "missing":
+                        self.index.record_no_match(target.lidarr_track_id, f"download_error: {exc}")
+                    summary["download_errors"] += 1
+                    if self._is_youtube_auth_block(exc):
+                        summary["youtube_auth_blocked"] += 1
+                    self._advance_queue_cursor(planned)
+                    completed_download = True
                     break
-                self.logger.exception("Clip download failed for %s - %s", target.artist, target.title)
-                if planned.mode == "missing":
-                    self.index.record_no_match(target.lidarr_track_id, f"download_error: {exc}")
-                summary["download_errors"] += 1
-                if self._is_youtube_auth_block(exc):
-                    summary["youtube_auth_blocked"] += 1
-                self._advance_queue_cursor(planned)
-                continue
 
-            clip_id = self.index.record_clip(
-                lidarr_track_id=target.lidarr_track_id,
-                video_id=best_candidate.video_id,
-                source_url=best_candidate.webpage_url,
-                title=best_candidate.title,
-                file_path=download_result["file_path"],
-                mime_type=download_result.get("mime_type") or "video/mp4",
-                score=best_decision.score,
-                evidence=best_decision.to_evidence(),
-                quality_tier=best_decision.quality_tier,
-            )
-            summary["downloaded"] += 1
-            if best_decision.quality_tier == "official":
-                summary["official_downloaded"] += 1
-            elif best_decision.quality_tier == "fallback":
-                summary["fallback_downloaded"] += 1
-            if planned.mode == "upgrade" and planned.existing_clip is not None:
-                self._mark_replaced_and_delete_old(planned.existing_clip, clip_id, download_result["file_path"])
-                summary["upgraded"] += 1
-            self._advance_queue_cursor(planned)
+                clip_id = self.index.record_clip(
+                    lidarr_track_id=target.lidarr_track_id,
+                    video_id=best_candidate.video_id,
+                    source_url=best_candidate.webpage_url,
+                    title=best_candidate.title,
+                    file_path=download_result["file_path"],
+                    mime_type=download_result.get("mime_type") or "video/mp4",
+                    score=best_decision.score,
+                    evidence=best_decision.to_evidence(),
+                    quality_tier=best_decision.quality_tier,
+                )
+                summary["downloaded"] += 1
+                if best_decision.quality_tier == "official":
+                    summary["official_downloaded"] += 1
+                elif best_decision.quality_tier == "fallback":
+                    summary["fallback_downloaded"] += 1
+                if planned.mode == "upgrade" and planned.existing_clip is not None:
+                    self._mark_replaced_and_delete_old(planned.existing_clip, clip_id, download_result["file_path"])
+                    summary["upgraded"] += 1
+                self._advance_queue_cursor(planned)
+                completed_download = True
+                break
+            if abort_sync:
+                break
+            if completed_download:
+                continue
+            if static_rejections_for_target:
+                if planned.mode == "upgrade":
+                    summary["no_upgrade"] += 1
+                else:
+                    self.index.record_no_match(target.lidarr_track_id, "static_visuals")
+                    summary["no_match"] += 1
+                self._advance_queue_cursor(planned)
         return summary
 
     def collect_planned_targets(self) -> list[ClipTarget]:
@@ -260,10 +294,14 @@ class LidaClipsService:
             int(target.lidarr_track_id),
         ]
 
-    def _score_candidates(self, target: ClipTarget, candidates: list[Candidate]) -> tuple[Candidate | None, MatchDecision | None]:
-        best_candidate = None
-        best_decision = None
+    def _score_candidates(self, target: ClipTarget, candidates: list[Candidate]) -> list[tuple[Candidate, MatchDecision]]:
+        static_rejections = set()
+        if hasattr(self.index, "rejected_video_ids"):
+            static_rejections = self.index.rejected_video_ids(target.lidarr_track_id, "static_visuals")
+        ranked_candidates: list[tuple[Candidate, MatchDecision]] = []
         for candidate in candidates:
+            if candidate.video_id in static_rejections:
+                continue
             decision = self.scorer.score(target.artist, target.title, target.duration, candidate)
             self.index.record_candidate(
                 lidarr_track_id=target.lidarr_track_id,
@@ -275,18 +313,44 @@ class LidaClipsService:
                 evidence=decision.to_evidence(),
                 quality_tier=decision.quality_tier,
             )
-            if decision.accepted and (best_decision is None or self._decision_better_than(decision, best_decision)):
-                best_candidate = candidate
-                best_decision = decision
-        return best_candidate, best_decision
+            if decision.accepted:
+                ranked_candidates.append((candidate, decision))
+        ranked_candidates.sort(key=lambda item: self._decision_sort_key(item[1]), reverse=True)
+        return ranked_candidates
 
     def _decision_better_than(self, candidate: MatchDecision, current: MatchDecision) -> bool:
+        return self._decision_sort_key(candidate) > self._decision_sort_key(current)
+
+    def _decision_sort_key(self, decision: MatchDecision) -> tuple[int, float]:
         ranks = {"rejected": 0, "fallback": 1, "official": 2}
-        candidate_rank = ranks.get(candidate.quality_tier, 0)
-        current_rank = ranks.get(current.quality_tier, 0)
-        if candidate_rank != current_rank:
-            return candidate_rank > current_rank
-        return candidate.score > current.score
+        return ranks.get(decision.quality_tier, 0), float(decision.score)
+
+    def _record_static_candidate(
+        self,
+        target: ClipTarget,
+        candidate: Candidate,
+        decision: MatchDecision,
+        exc: StaticVideoError,
+    ) -> None:
+        evidence = decision.to_evidence()
+        evidence.update(
+            {
+                "accepted": False,
+                "quality_tier": "rejected",
+                "rejection_reason": exc.reason,
+                "validation": exc.metrics,
+            }
+        )
+        self.index.record_candidate(
+            lidarr_track_id=target.lidarr_track_id,
+            video_id=candidate.video_id,
+            source_url=candidate.webpage_url,
+            title=candidate.title,
+            score=decision.score,
+            accepted=False,
+            evidence=evidence,
+            quality_tier="rejected",
+        )
 
     def _should_upgrade(self, existing_clip: dict[str, Any] | None, decision: MatchDecision) -> bool:
         if existing_clip is None:
