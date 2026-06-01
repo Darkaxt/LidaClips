@@ -1,4 +1,3 @@
-import json
 import subprocess
 from typing import Callable
 
@@ -18,7 +17,7 @@ class MotionValidator:
         frame_width: int = 96,
         frame_height: int = 54,
         min_frames: int = 4,
-        min_duration: float = 30.0,
+        sample_interval_seconds: int = 30,
         min_average_delta: float = 0.01,
         min_max_delta: float = 0.02,
     ):
@@ -27,7 +26,7 @@ class MotionValidator:
         self.frame_width = int(frame_width)
         self.frame_height = int(frame_height)
         self.min_frames = int(min_frames)
-        self.min_duration = float(min_duration)
+        self.sample_interval_seconds = int(sample_interval_seconds)
         self.min_average_delta = float(min_average_delta)
         self.min_max_delta = float(min_max_delta)
 
@@ -42,44 +41,9 @@ class MotionValidator:
         if self.frame_sampler is not None:
             return self.frame_sampler(path)
 
-        duration = self._duration(path)
-        if duration < self.min_duration:
+        frame_size = self.frame_width * self.frame_height
+        if frame_size <= 0:
             return []
-
-        offsets = [
-            duration * (index + 1) / (self.sample_count + 1)
-            for index in range(self.sample_count)
-        ]
-        frames = []
-        for offset in offsets:
-            frame = self._sample_frame(path, offset)
-            if frame:
-                frames.append(frame)
-        return frames
-
-    def _duration(self, path: str) -> float:
-        try:
-            result = subprocess.run(
-                [
-                    "ffprobe",
-                    "-v",
-                    "error",
-                    "-show_entries",
-                    "format=duration",
-                    "-of",
-                    "json",
-                    path,
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            payload = json.loads(result.stdout or "{}")
-            return float((payload.get("format") or {}).get("duration") or 0)
-        except Exception:
-            return 0.0
-
-    def _sample_frame(self, path: str, offset: float) -> bytes:
         try:
             result = subprocess.run(
                 [
@@ -87,19 +51,18 @@ class MotionValidator:
                     "-nostdin",
                     "-v",
                     "error",
-                    "-ss",
-                    f"{offset:.3f}",
                     "-i",
                     path,
-                    "-frames:v",
-                    "1",
                     "-vf",
                     (
+                        f"fps=1/{self.sample_interval_seconds},"
                         f"scale={self.frame_width}:{self.frame_height}:"
                         "force_original_aspect_ratio=decrease,"
                         f"pad={self.frame_width}:{self.frame_height}:(ow-iw)/2:(oh-ih)/2,"
                         "format=gray"
                     ),
+                    "-frames:v",
+                    str(self.sample_count),
                     "-f",
                     "rawvideo",
                     "pipe:1",
@@ -107,10 +70,15 @@ class MotionValidator:
                 check=True,
                 capture_output=True,
             )
-            expected_size = self.frame_width * self.frame_height
-            return result.stdout if len(result.stdout) == expected_size else b""
         except Exception:
-            return b""
+            return []
+
+        frames = []
+        for offset in range(0, len(result.stdout), frame_size):
+            frame = result.stdout[offset:offset + frame_size]
+            if len(frame) == frame_size:
+                frames.append(frame)
+        return frames
 
     def _motion_metrics(self, frames: list[bytes]) -> dict:
         frame_count = len(frames)
