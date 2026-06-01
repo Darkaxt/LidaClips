@@ -53,7 +53,8 @@ class MotionValidatorTests(unittest.TestCase):
         self.assertEqual(run.call_count, 1)
         command = run.call_args.args[0]
         self.assertIn("-vf", command)
-        self.assertIn("fps=1/30", command[command.index("-vf") + 1])
+        self.assertIn("fps=1/6", command[command.index("-vf") + 1])
+        self.assertEqual(run.call_args.kwargs["timeout"], 45)
 
 
 if __name__ == "__main__":

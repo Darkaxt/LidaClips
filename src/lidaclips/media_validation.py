@@ -17,7 +17,8 @@ class MotionValidator:
         frame_width: int = 96,
         frame_height: int = 54,
         min_frames: int = 4,
-        sample_interval_seconds: int = 30,
+        sample_interval_seconds: int = 6,
+        ffmpeg_timeout_seconds: int = 45,
         min_average_delta: float = 0.01,
         min_max_delta: float = 0.02,
     ):
@@ -27,6 +28,7 @@ class MotionValidator:
         self.frame_height = int(frame_height)
         self.min_frames = int(min_frames)
         self.sample_interval_seconds = int(sample_interval_seconds)
+        self.ffmpeg_timeout_seconds = int(ffmpeg_timeout_seconds)
         self.min_average_delta = float(min_average_delta)
         self.min_max_delta = float(min_max_delta)
 
@@ -69,6 +71,7 @@ class MotionValidator:
                 ],
                 check=True,
                 capture_output=True,
+                timeout=self.ffmpeg_timeout_seconds,
             )
         except Exception:
             return []
