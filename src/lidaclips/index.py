@@ -469,6 +469,66 @@ class ClipIndex:
             "recent_failures": [dict(row) for row in recent_failures if row is not None],
         }
 
+    def download_queue_preview(self, limit: int = 25) -> list[dict[str, Any]]:
+        bounded_limit = max(0, min(int(limit), 100))
+        if bounded_limit <= 0:
+            return []
+
+        missing_rows = self.connection.execute(
+            f"""
+            SELECT tracks.lidarr_track_id, tracks.artist, tracks.album, tracks.title,
+                   tracks.duration, tracks.absolute_track_number
+            FROM tracks
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM clips
+                WHERE clips.lidarr_track_id = tracks.lidarr_track_id
+                  AND clips.status = 'completed'
+            )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM failures
+                WHERE failures.lidarr_track_id = tracks.lidarr_track_id
+                  AND failures.reason IN ({",".join("?" for _ in DEFERRED_FAILURE_REASONS)})
+            )
+            ORDER BY lower(tracks.artist), lower(tracks.album),
+                     COALESCE(tracks.absolute_track_number, 0), lower(tracks.title),
+                     tracks.lidarr_track_id
+            LIMIT ?
+            """,
+            (*DEFERRED_FAILURE_REASONS, bounded_limit),
+        ).fetchall()
+        if missing_rows:
+            return [self._queue_row_to_dict(row, "missing") for row in missing_rows]
+
+        upgrade_rows = self.connection.execute(
+            """
+            SELECT tracks.lidarr_track_id, tracks.artist, tracks.album, tracks.title,
+                   tracks.duration, tracks.absolute_track_number
+            FROM tracks
+            WHERE EXISTS (
+                SELECT 1
+                FROM clips
+                WHERE clips.lidarr_track_id = tracks.lidarr_track_id
+                  AND clips.status = 'completed'
+                  AND clips.quality_tier = 'fallback'
+            )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM clips
+                WHERE clips.lidarr_track_id = tracks.lidarr_track_id
+                  AND clips.status = 'completed'
+                  AND clips.quality_tier = 'official'
+            )
+            ORDER BY lower(tracks.artist), lower(tracks.album),
+                     COALESCE(tracks.absolute_track_number, 0), lower(tracks.title),
+                     tracks.lidarr_track_id
+            LIMIT ?
+            """,
+            (bounded_limit,),
+        ).fetchall()
+        return [self._queue_row_to_dict(row, "upgrade") for row in upgrade_rows]
+
     def path_conflicts(self, file_path: str, lidarr_track_id: int, exclude_clip_id: int | None = None) -> bool:
         conditions = [
             "file_path = ?",
@@ -580,6 +640,18 @@ class ClipIndex:
         payload["evidence"] = json.loads(payload.pop("evidence_json") or "{}")
         payload["stream_url"] = f"/api/v1/stream/{payload['id']}"
         return payload
+
+    def _queue_row_to_dict(self, row: sqlite3.Row, status: str) -> dict[str, Any]:
+        title = row["title"]
+        return {
+            "lidarr_track_id": row["lidarr_track_id"],
+            "artist": row["artist"],
+            "album": row["album"],
+            "track": title,
+            "title": title,
+            "duration": row["duration"],
+            "status": status,
+        }
 
     def _migrate_schema(self) -> None:
         self._ensure_column("clips", "quality_tier", "TEXT NOT NULL DEFAULT 'fallback'")

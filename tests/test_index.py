@@ -300,6 +300,75 @@ class IndexMigrationTests(unittest.TestCase):
 
         self.assertEqual(len(summary["recent_clips"]), 20)
 
+    def test_download_queue_preview_returns_missing_tracks_without_live_collection(self):
+        index = ClipIndex(":memory:")
+        completed_target = self.make_target(lidarr_track_id=42, title="Bright Lights")
+        missing_target = self.make_target(lidarr_track_id=43, title="City Glow")
+        index.upsert_track(completed_target)
+        index.upsert_track(missing_target)
+        index.record_clip(
+            lidarr_track_id=42,
+            video_id="official-new",
+            source_url="https://example.test/new",
+            title="New",
+            file_path="/clips/new.mp4",
+            mime_type="video/mp4",
+            score=95.0,
+            evidence={"quality_tier": "official", "reasons": ["official"]},
+            quality_tier="official",
+        )
+
+        preview = index.download_queue_preview(limit=10)
+
+        self.assertEqual(len(preview), 1)
+        self.assertEqual(preview[0]["lidarr_track_id"], 43)
+        self.assertEqual(preview[0]["track"], "City Glow")
+        self.assertEqual(preview[0]["status"], "missing")
+
+    def test_download_queue_preview_uses_fallback_upgrades_after_missing_tracks_are_done(self):
+        index = ClipIndex(":memory:")
+        official_target = self.make_target(lidarr_track_id=42, title="Bright Lights")
+        fallback_target = self.make_target(lidarr_track_id=43, title="City Glow")
+        index.upsert_track(official_target)
+        index.upsert_track(fallback_target)
+        index.record_clip(
+            lidarr_track_id=42,
+            video_id="official-new",
+            source_url="https://example.test/new",
+            title="New",
+            file_path="/clips/new.mp4",
+            mime_type="video/mp4",
+            score=95.0,
+            evidence={"quality_tier": "official", "reasons": ["official"]},
+            quality_tier="official",
+        )
+        index.record_clip(
+            lidarr_track_id=43,
+            video_id="fallback",
+            source_url="https://example.test/fallback",
+            title="Fallback",
+            file_path="/clips/fallback.mp4",
+            mime_type="video/mp4",
+            score=75.0,
+            evidence={"quality_tier": "fallback"},
+            quality_tier="fallback",
+        )
+
+        preview = index.download_queue_preview(limit=10)
+
+        self.assertEqual(len(preview), 1)
+        self.assertEqual(preview[0]["lidarr_track_id"], 43)
+        self.assertEqual(preview[0]["status"], "upgrade")
+
+    def test_download_queue_preview_is_limited(self):
+        index = ClipIndex(":memory:")
+        for lidarr_track_id in range(1, 5):
+            index.upsert_track(self.make_target(lidarr_track_id=lidarr_track_id, title=f"Song {lidarr_track_id}"))
+
+        preview = index.download_queue_preview(limit=2)
+
+        self.assertEqual(len(preview), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

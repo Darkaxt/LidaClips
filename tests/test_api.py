@@ -31,6 +31,12 @@ class FakeQueueService(FakeHealthService):
         return self.targets
 
 
+class FakeRuntime:
+    def __init__(self, targets=None, sync_status="idle"):
+        self.last_targets = list(targets or [])
+        self.sync_status = sync_status
+
+
 class ApiTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -121,16 +127,17 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["recent_clips"][0]["file_name"], "clip.mp4")
         self.assertNotIn("file_path", payload["recent_clips"][0])
 
-    def test_dashboard_can_include_current_download_queue(self):
+    def test_dashboard_uses_cached_queue_without_collecting_live_lidarr(self):
         queue_service = FakeQueueService([self.target])
         app = create_app(self.index, api_key="secret", service=queue_service)
+        app.config["LIDACLIPS_RUNTIME"] = FakeRuntime([self.target])
         client = app.test_client()
 
         response = client.get("/api/v1/dashboard?include_queue=true", headers=self.headers())
         payload = response.get_json()
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(queue_service.collect_calls, 1)
+        self.assertEqual(queue_service.collect_calls, 0)
         self.assertEqual(
             [
                 {
@@ -146,6 +153,34 @@ class ApiTests(unittest.TestCase):
             payload["download_queue"],
         )
         self.assertNotIn("source_file_path", payload["download_queue"][0])
+
+    def test_dashboard_queue_falls_back_to_bounded_db_preview(self):
+        missing_target = ClipTarget(
+            lidarr_track_id=43,
+            artist_id=1,
+            album_id=10,
+            artist="The Example Band",
+            album="Neon Nights",
+            album_year=2020,
+            title="City Glow",
+            track_number="2",
+            absolute_track_number=2,
+            duration=180,
+            source_file_path="/music/The Example Band/Neon Nights/02 - City Glow.flac",
+        )
+        self.index.upsert_track(missing_target)
+        queue_service = FakeQueueService([missing_target])
+        app = create_app(self.index, api_key="secret", service=queue_service)
+        client = app.test_client()
+
+        response = client.get("/api/v1/dashboard?include_queue=true&queue_limit=1", headers=self.headers())
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(queue_service.collect_calls, 0)
+        self.assertEqual(len(payload["download_queue"]), 1)
+        self.assertEqual(payload["download_queue"][0]["lidarr_track_id"], 43)
+        self.assertEqual(payload["download_queue"][0]["status"], "missing")
 
     def test_control_requires_api_key_and_toggles_sync_pause(self):
         unauthorized = self.client.get("/api/v1/control")

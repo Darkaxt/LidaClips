@@ -57,7 +57,8 @@ def create_app(index: ClipIndex, api_key: str = "", service: Any | None = None) 
     def dashboard():
         payload = public_dashboard(index.dashboard_summary())
         if _truthy_query_arg(request.args.get("include_queue")):
-            payload["download_queue"] = _download_queue_payload()
+            queue_limit = _bounded_int_query_arg(request.args.get("queue_limit"), 25, 0, 100)
+            payload["download_queue"] = _download_queue_payload(queue_limit)
         return jsonify(payload)
 
     @app.get("/api/v1/control")
@@ -138,14 +139,12 @@ def create_app(index: ClipIndex, api_key: str = "", service: Any | None = None) 
         sync_running = bool(runtime is not None and getattr(runtime, "sync_status", None) == "running")
         return {"sync_paused": index.get_sync_paused(), "sync_running": sync_running}
 
-    def _download_queue_payload() -> list[dict[str, Any]]:
-        service = app.config.get("LIDACLIPS_SERVICE")
-        if service is not None and hasattr(service, "collect_planned_targets"):
-            return [public_download_queue_item(target) for target in service.collect_planned_targets()]
-
+    def _download_queue_payload(limit: int) -> list[dict[str, Any]]:
         runtime = app.config.get("LIDACLIPS_RUNTIME")
         targets = getattr(runtime, "last_targets", []) if runtime is not None else []
-        return [public_download_queue_item(target) for target in targets]
+        if targets:
+            return [public_download_queue_item(target) for target in list(targets)[:limit]]
+        return [public_download_queue_item(target) for target in index.download_queue_preview(limit)]
 
     return app
 
@@ -218,6 +217,14 @@ def public_download_queue_item(target: Any) -> dict[str, Any]:
 
 def _truthy_query_arg(value: str | None) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _bounded_int_query_arg(value: str | None, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(str(value)) if value is not None else default
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(parsed, maximum))
 
 
 def _subsonic_video(row: dict[str, Any]) -> dict[str, Any]:
