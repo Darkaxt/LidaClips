@@ -35,7 +35,8 @@ echo "-----------------"
 
 echo "Setting up directories.."
 mkdir -p /lidaclips/clips /lidaclips/config /lidaclips/cache /lidaclips/staging
-chown -R ${PUID}:${PGID} /lidaclips
+chown ${PUID}:${PGID} /lidaclips
+chown -R ${PUID}:${PGID} /lidaclips/config /lidaclips/cache /lidaclips/staging
 
 export XDG_CACHE_HOME=/lidaclips/cache
 
