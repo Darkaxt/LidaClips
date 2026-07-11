@@ -1,11 +1,14 @@
 import json
+import logging
 import os
 import re
+import tempfile
 from dataclasses import asdict, dataclass
 from typing import Mapping
 
 
 EMPTY_ENV_OVERRIDES = {"sync_schedule", "sync_artist_allowlist"}
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -58,11 +61,17 @@ class Settings:
         data = asdict(cls())
 
         if os.path.exists(config_path):
-            with open(config_path, "r", encoding="utf-8") as handle:
-                loaded = json.load(handle)
-            for key, value in loaded.items():
-                if key in data:
-                    data[key] = value
+            try:
+                with open(config_path, "r", encoding="utf-8") as handle:
+                    loaded = json.load(handle)
+                if not isinstance(loaded, dict):
+                    raise ValueError("settings config must contain a JSON object")
+            except (json.JSONDecodeError, ValueError) as exc:
+                LOGGER.warning("Ignoring invalid settings config %s: %s", config_path, exc)
+            else:
+                for key, value in loaded.items():
+                    if key in data:
+                        data[key] = value
 
         for key in list(data):
             if key in environ and (environ[key] != "" or key in EMPTY_ENV_OVERRIDES):
@@ -93,8 +102,20 @@ class Settings:
         return settings
 
     def save(self, config_path: str) -> None:
-        with open(config_path, "w", encoding="utf-8") as handle:
-            json.dump(asdict(self), handle, indent=4)
+        config_dir = os.path.dirname(os.path.abspath(config_path))
+        fd, temporary_path = tempfile.mkstemp(prefix=".settings_config.", suffix=".tmp", dir=config_dir)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(asdict(self), handle, indent=4)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary_path, config_path)
+        except BaseException:
+            try:
+                os.unlink(temporary_path)
+            except FileNotFoundError:
+                pass
+            raise
 
     @staticmethod
     def parse_sync_schedule(value) -> list[int]:

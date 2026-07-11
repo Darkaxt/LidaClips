@@ -1,6 +1,8 @@
+import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 from lidaclips.settings import Settings
 
@@ -93,6 +95,35 @@ class SettingsTests(unittest.TestCase):
 
             self.assertEqual(settings.sync_schedule, [])
             self.assertEqual(settings.sync_artist_allowlist, [])
+
+    def test_empty_config_recovers_from_environment(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = os.path.join(temp_dir, "settings_config.json")
+            open(config_path, "w", encoding="utf-8").close()
+
+            settings = Settings.load(
+                config_folder=temp_dir,
+                environ={"lidarr_address": "http://lidarr:8686"},
+            )
+
+            self.assertEqual(settings.lidarr_address, "http://lidarr:8686")
+            with open(config_path, "r", encoding="utf-8") as handle:
+                self.assertEqual(json.load(handle)["lidarr_address"], "http://lidarr:8686")
+
+    def test_failed_save_preserves_existing_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = os.path.join(temp_dir, "settings_config.json")
+            original = '{"lidarr_address": "http://original"}\n'
+            with open(config_path, "w", encoding="utf-8") as handle:
+                handle.write(original)
+
+            with mock.patch("lidaclips.settings.json.dump", side_effect=OSError("disk write failed")):
+                with self.assertRaisesRegex(OSError, "disk write failed"):
+                    Settings().save(config_path)
+
+            with open(config_path, "r", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), original)
+            self.assertEqual(os.listdir(temp_dir), ["settings_config.json"])
 
 
 if __name__ == "__main__":
