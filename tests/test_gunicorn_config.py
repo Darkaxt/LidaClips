@@ -8,6 +8,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class GunicornConfigTests(unittest.TestCase):
+    def test_worker_matches_socketio_threading_mode(self):
+        config = runpy.run_path(str(PROJECT_ROOT / "gunicorn_config.py"))
+
+        self.assertEqual(config["worker_class"], "gthread")
+
     def test_default_worker_timeout_allows_long_sync_runs(self):
         config = runpy.run_path(str(PROJECT_ROOT / "gunicorn_config.py"))
 
