@@ -13,6 +13,11 @@ class GunicornConfigTests(unittest.TestCase):
 
         self.assertEqual(config["worker_class"], "gthread")
 
+    def test_control_socket_is_disabled_before_worker_fork(self):
+        config = runpy.run_path(str(PROJECT_ROOT / "gunicorn_config.py"))
+
+        self.assertTrue(config["control_socket_disable"])
+
     def test_default_worker_timeout_allows_long_sync_runs(self):
         config = runpy.run_path(str(PROJECT_ROOT / "gunicorn_config.py"))
 

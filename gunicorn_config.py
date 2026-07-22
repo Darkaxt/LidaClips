@@ -5,3 +5,4 @@ workers = 1
 threads = 4
 timeout = int(os.environ.get("GUNICORN_TIMEOUT", "0"))
 worker_class = "gthread"
+control_socket_disable = True
