@@ -39,13 +39,13 @@ Sidecar output beside audio files is supported by `clip_output_mode=sidecar`, bu
 
 In both output modes, the video filename follows the music filename. In `clips_lane` mode LidaClips keeps its own artist and album folders, then writes the source audio basename with the video extension. The YouTube video ID is stored in SQLite and API responses, not appended to normal filenames.
 
-For a Navidrome library backed by a mounted music drive, a typical mapping is:
+For a Navidrome library backed by mounted media storage, a typical mapping is:
 
 ```yaml
 volumes:
   - /opt/lidaclips/config:/lidaclips/config
   - /opt/lidaclips/staging:/lidaclips/staging
-  - /mnt/gdrive-music/Clips:/lidaclips/clips
+  - /srv/media/Clips:/lidaclips/clips
 ```
 
 Keep staging on local disk so partial downloads and failed merges do not appear in the final clips folder.
@@ -196,9 +196,9 @@ Candidate scoring uses:
 
 If no candidate passes the fallback floor, the target is recorded as `no_match` and can be retried by later scheduled runs. Existing fallback clips are upgrade targets; existing official clips are skipped.
 
-## Oracle Deployment Notes
+## MiniPC Deployment Notes
 
-Personal Oracle/Traefik deployment notes for `clips.remaxku.eu` are in [docs/oracle-deployment.md](docs/oracle-deployment.md). They cover the intended Traefik UI/API split and Uptime Kuma monitor pattern.
+Personal MiniPC/Caddy deployment notes for `clips.remaxku.eu` are in [docs/minipc-deployment.md](docs/minipc-deployment.md). They cover the UI/API authentication split, guarded container updates, and Uptime Kuma monitor pattern.
 
 ## Development
 
