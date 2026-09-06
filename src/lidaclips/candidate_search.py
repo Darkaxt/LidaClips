@@ -9,6 +9,15 @@ from .scoring import Candidate
 
 
 class YtDlpCandidateSearch:
+    # Extra suffixes beyond the bare artist+title query. Keep this short: each
+    # entry is another ytsearch round-trip.
+    SEARCH_SUFFIXES = (
+        "official music video",
+        "official video",
+        "клип",
+        "",
+    )
+
     def __init__(
         self,
         limit: int = 10,
@@ -32,7 +41,27 @@ class YtDlpCandidateSearch:
         self.youtube_proxy_url = youtube_proxy_url.strip()
 
     def search(self, target: ClipTarget) -> list[Candidate]:
-        query = f"ytsearch{self.limit}:{target.artist} {target.title} official music video"
+        seen: set[str] = set()
+        candidates: list[Candidate] = []
+        for query in self._search_queries(target):
+            batch = self._search_query(query)
+            for candidate in batch:
+                key = candidate.video_id or candidate.webpage_url
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                candidates.append(candidate)
+        return candidates
+
+    def _search_queries(self, target: ClipTarget) -> list[str]:
+        base = f"{target.artist} {target.title}".strip()
+        queries: list[str] = []
+        for suffix in self.SEARCH_SUFFIXES:
+            phrase = f"{base} {suffix}".strip()
+            queries.append(f"ytsearch{self.limit}:{phrase}")
+        return queries
+
+    def _search_query(self, query: str) -> list[Candidate]:
         if self.ytdlp_binary and self.ytdlp_factory is None:
             return self._search_with_binary(query)
         options = {
