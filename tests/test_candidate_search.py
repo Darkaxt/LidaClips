@@ -63,7 +63,17 @@ class CandidateSearchTests(unittest.TestCase):
 
         candidates = YtDlpCandidateSearch(limit=7, ytdlp_factory=factory).search(target)
 
-        self.assertEqual(created[0].queries, [("ytsearch7:The Example Band Bright Lights official music video", False)])
+        all_queries = [query for instance in created for query in instance.queries]
+        self.assertEqual(
+            all_queries,
+            [
+                ("ytsearch7:The Example Band Bright Lights official music video", False),
+                ("ytsearch7:The Example Band Bright Lights official video", False),
+                ("ytsearch7:The Example Band Bright Lights клип", False),
+                ("ytsearch7:The Example Band Bright Lights", False),
+            ],
+        )
+        self.assertEqual(len(created), 4)
         self.assertTrue(created[0].options.get("extract_flat"))
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0].video_id, "abc123")
@@ -94,7 +104,8 @@ class CandidateSearchTests(unittest.TestCase):
                 js_runtime_path=None,
             ).search(target)
 
-        command = run.call_args.args[0]
+        self.assertEqual(run.call_count, 4)
+        command = run.call_args_list[0].args[0]
         self.assertIn("--flat-playlist", command)
         self.assertEqual(candidates[0].video_id, "abc123")
 
@@ -122,7 +133,8 @@ class CandidateSearchTests(unittest.TestCase):
                 youtube_proxy_url="http://youtube-proxy:8888",
             ).search(target)
 
-        command = run.call_args.args[0]
+        self.assertEqual(run.call_count, 4)
+        command = run.call_args_list[0].args[0]
         self.assertIn("--proxy", command)
         self.assertIn("http://youtube-proxy:8888", command)
 
@@ -151,6 +163,7 @@ class CandidateSearchTests(unittest.TestCase):
         YtDlpCandidateSearch(ytdlp_factory=factory, js_runtime_path="/usr/bin/node").search(target)
 
         self.assertEqual(created[0].options["js_runtimes"], {"node": {"path": "/usr/bin/node"}})
+        self.assertEqual(len(created), 4)
 
     def test_passes_po_provider_args_to_candidate_extraction(self):
         created = []

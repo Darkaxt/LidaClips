@@ -56,6 +56,11 @@ BLOCKED_KEYWORDS = {
 OFFICIAL_KEYWORDS = {
     "official music video",
     "official video",
+    "official clip",
+    "music video",
+    "официальный клип",
+    "официальное видео",
+    "официальный видеоклип",
 }
 
 
@@ -148,10 +153,18 @@ class ClipScorer:
 
         score = min(round(score, 2), 100.0)
 
-        if artist_ratio < 55:
+        # Strong title+duration can rescue EN channel names when the video title
+        # still carries the Lidarr artist (Элизиум on channel "Elysium").
+        artist_in_title = bool(artist_norm and artist_norm in candidate_title_norm)
+        soft_artist_ok = title_ratio >= 85 and duration_score >= 82 and (
+            artist_in_title or artist_ratio >= 40
+        )
+        if artist_ratio < 55 and not soft_artist_ok:
             return MatchDecision(False, score, tuple(reasons), "low_score", "rejected")
         if title_ratio < 70:
             return MatchDecision(False, score, tuple(reasons), "low_score", "rejected")
+        if soft_artist_ok and artist_ratio < 55:
+            reasons.append("soft_artist_match")
         if official_signal and score >= self.minimum_score:
             return MatchDecision(True, score, tuple(reasons), None, "official")
         if score >= self.minimum_fallback_score:
@@ -202,9 +215,21 @@ class ClipScorer:
         channel_norm = normalize_text(candidate.channel or candidate.uploader)
         if self._looks_like_medley(artist, title, candidate):
             return False
-        if re.search(r"\bofficial\b.*\b(music\s+)?video\b", title_norm):
+        if re.search(r"\bofficial\b.*\b(music\s+)?(video|clip)\b", title_norm):
             return True
-        return channel_norm.endswith("vevo")
+        if re.search(r"\bmusic\s+video\b", title_norm):
+            return True
+        if re.search(r"официальн\w*\s+(видеоклип|видео|клип)", title_norm):
+            return True
+        if re.search(r"\bклип\b", title_norm) and self._looks_like_artist_channel(
+            normalize_text(artist), channel_norm, candidate
+        ):
+            return True
+        if channel_norm.endswith("vevo"):
+            return True
+        if channel_norm.endswith("official") or channel_norm.endswith("официальный"):
+            return True
+        return False
 
     def _looks_like_medley(self, artist: str, title: str, candidate: Candidate) -> bool:
         candidate_title = candidate.title or ""

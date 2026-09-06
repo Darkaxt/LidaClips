@@ -160,6 +160,54 @@ class ClipScorerTests(unittest.TestCase):
         self.assertEqual(decision.quality_tier, "fallback")
         self.assertNotIn("official", decision.reasons)
 
+    def test_accepts_cyrillic_official_clip_on_matching_channel(self):
+        candidate = Candidate(
+            video_id="ruclip1",
+            title="Король и Шут - Лесник (Официальный клип)",
+            webpage_url="https://www.youtube.com/watch?v=ruclip1",
+            channel="Король и Шут",
+            uploader="Король и Шут",
+            duration=200,
+            view_count=5_000_000,
+            channel_follower_count=400_000,
+            channel_is_verified=True,
+        )
+
+        decision = self.scorer.score(
+            artist="Король и Шут",
+            title="Лесник",
+            expected_duration=198,
+            candidate=candidate,
+        )
+
+        self.assertTrue(decision.accepted)
+        self.assertEqual(decision.quality_tier, "official")
+        self.assertIn("official", decision.reasons)
+
+    def test_accepts_transliterated_channel_when_title_carries_cyrillic_artist(self):
+        candidate = Candidate(
+            video_id="elysium1",
+            title="Элизиум - Оптимизм (Official Video)",
+            webpage_url="https://www.youtube.com/watch?v=elysium1",
+            channel="Elysium",
+            uploader="Elysium",
+            duration=210,
+            view_count=800_000,
+            channel_follower_count=50_000,
+            channel_is_verified=False,
+        )
+
+        decision = self.scorer.score(
+            artist="Элизиум",
+            title="Оптимизм",
+            expected_duration=208,
+            candidate=candidate,
+        )
+
+        self.assertTrue(decision.accepted)
+        self.assertIn("official", decision.reasons)
+        self.assertGreaterEqual(decision.score, 60)
+
 
 if __name__ == "__main__":
     unittest.main()

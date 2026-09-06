@@ -7,11 +7,19 @@ WINDOWS_TRANSLATION = str.maketrans({char: " " for char in WINDOWS_BAD_CHARS})
 
 
 def normalize_text(value: str | None) -> str:
+    """Lowercase and strip punctuation while keeping letters from any script.
+
+    Historically this ASCII-folded via ``encode('ascii', 'ignore')``, which erased
+    Cyrillic (and other non-Latin) artist/title tokens and made clip matching
+    impossible for libraries like Элизиум / Король и Шут.
+    """
     if not value:
         return ""
-    normalized = unicodedata.normalize("NFKD", value)
-    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
-    cleaned = re.sub(r"[^\w\s&+-]", " ", ascii_text.lower())
+    normalized = unicodedata.normalize("NFKC", value)
+    without_marks = "".join(
+        char for char in unicodedata.normalize("NFKD", normalized) if not unicodedata.combining(char)
+    )
+    cleaned = re.sub(r"[^\w\s&+-]", " ", without_marks.lower(), flags=re.UNICODE)
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
