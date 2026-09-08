@@ -15,6 +15,21 @@ def normalize_text(value: str | None) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
+def path_basename(path: str | None) -> str:
+    """Basename that works for Windows paths inside Linux containers.
+
+    Lidarr on Windows returns ``F:\\Music\\Artist\\Album\\01 Track.flac``.
+    Linux ``os.path.basename`` does not split on ``\\``, so the whole path became the
+    clip filename after ``safe_filename`` (``F Music Artist Album 01 Track``).
+    """
+    if not path:
+        return ""
+    normalized = str(path).replace("\\", "/").rstrip("/")
+    if not normalized:
+        return ""
+    return normalized.rsplit("/", 1)[-1]
+
+
 def safe_filename(value: str | None, fallback: str = "untitled") -> str:
     cleaned = (value or fallback).translate(WINDOWS_TRANSLATION)
     cleaned = re.sub(r"\s+", " ", cleaned).strip().strip(".")
