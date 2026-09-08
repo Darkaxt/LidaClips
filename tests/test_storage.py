@@ -69,6 +69,33 @@ class ClipStorageTests(unittest.TestCase):
                 os.path.join(temp_dir, "The Example Band", "Neon Nights (2020)", "01 - Bright Lights [lidarr-42].mp4"),
             )
 
+    def test_clips_lane_windows_source_path_uses_audio_basename_only(self):
+        """Windows Lidarr paths when the container is Linux."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            storage = ClipStorage(output_mode="clips_lane", output_path=temp_dir, staging_path=os.path.join(temp_dir, ".staging"))
+            target = self.make_target()
+            target = type(target)(
+                lidarr_track_id=target.lidarr_track_id,
+                artist_id=target.artist_id,
+                album_id=target.album_id,
+                artist=target.artist,
+                album=target.album,
+                album_year=target.album_year,
+                title=target.title,
+                track_number=target.track_number,
+                absolute_track_number=target.absolute_track_number,
+                duration=target.duration,
+                source_file_path=r"F:\Music\The Example Band\Neon Nights\01 - Bright Lights.flac",
+            )
+
+            final_path = storage.final_path(target, "abc123", ".mp4")
+
+            self.assertEqual(
+                final_path,
+                os.path.join(temp_dir, "The Example Band", "Neon Nights (2020)", "01 - Bright Lights.mp4"),
+            )
+            self.assertNotIn("F Music", final_path)
+
     def test_sidecar_path_is_written_beside_audio_file(self):
         storage = ClipStorage(output_mode="sidecar", output_path="/unused", staging_path="/tmp/staging")
 

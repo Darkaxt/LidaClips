@@ -4,7 +4,7 @@ import shutil
 from typing import Any, Callable
 
 from .models import ClipTarget
-from .text import compact_track_number, safe_filename
+from .text import compact_track_number, path_basename, safe_filename
 
 
 class ClipStorage:
@@ -85,7 +85,8 @@ class ClipStorage:
 
     def _clip_basename(self, target: ClipTarget) -> str:
         if target.source_file_path:
-            source_basename = os.path.splitext(os.path.basename(target.source_file_path))[0]
+            # Windows Lidarr paths inside a Linux container — not os.path.basename.
+            source_basename = os.path.splitext(path_basename(target.source_file_path))[0]
             if source_basename:
                 return safe_filename(source_basename)
         track_no = compact_track_number(target.track_number, target.absolute_track_number)
