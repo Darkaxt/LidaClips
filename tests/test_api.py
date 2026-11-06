@@ -83,6 +83,16 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["status"], "ok")
 
+    def test_navidrome_aliases_preserve_existing_and_refreshed_clip_lookups(self):
+        self.index.navidrome_id_aliases = {"new-song-42": "nav-song-42"}
+        response = self.client.get("/api/v1/navidrome/new-song-42/clip", headers=self.headers())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["clip"]["video_id"], "abc123")
+        self.index.upsert_track(self.target, navidrome_song_id="new-song-42")
+        response = self.client.get("/api/v1/navidrome/nav-song-42/clip", headers=self.headers())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["clip"]["video_id"], "abc123")
+
     def test_health_requires_api_key_and_returns_dependency_checks(self):
         unauthorized = self.client.get("/api/v1/health")
         self.assertEqual(unauthorized.status_code, 401)

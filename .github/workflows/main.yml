@@ -61,6 +61,7 @@ jobs:
           push: true
           build-args: |
             RELEASE_VERSION=${{ env.IMAGE_VERSION }}
+            VCS_REF=${{ github.sha }}
           tags: |
             ${{ env.IMAGE_NAME }}:latest
             ${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }}

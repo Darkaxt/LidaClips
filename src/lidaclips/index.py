@@ -17,6 +17,7 @@ def utc_now() -> str:
 class ClipIndex:
     def __init__(self, db_path: str):
         self.db_path = db_path
+        self.navidrome_id_aliases: dict[str, str] = {}
         if db_path != ":memory:":
             os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
         self.connection = sqlite3.connect(db_path, check_same_thread=False)
@@ -297,18 +298,25 @@ class ClipIndex:
         return self._clip_row_to_dict(row)
 
     def get_clip_by_navidrome_song_id(self, song_id: str) -> dict[str, Any] | None:
+        candidates = [song_id]
+        historical = self.navidrome_id_aliases.get(song_id)
+        if historical:
+            candidates.append(historical)
+        else:
+            candidates.extend(current for current, old in self.navidrome_id_aliases.items() if old == song_id)
+        placeholders = ",".join("?" for _ in candidates)
         row = self.connection.execute(
-            """
+            f"""
             SELECT clips.*, tracks.artist, tracks.album, tracks.album_year, tracks.title AS track_title,
                    tracks.track_number, tracks.absolute_track_number, tracks.duration, tracks.source_file_path,
                    tracks.navidrome_song_id
             FROM clips
             JOIN tracks ON tracks.lidarr_track_id = clips.lidarr_track_id
-            WHERE tracks.navidrome_song_id = ? AND clips.status = 'completed'
+            WHERE tracks.navidrome_song_id IN ({placeholders}) AND clips.status = 'completed'
             ORDER BY clips.updated_at DESC, clips.id DESC
             LIMIT 1
             """,
-            (song_id,),
+            candidates,
         ).fetchone()
         return self._clip_row_to_dict(row)
 

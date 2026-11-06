@@ -1,4 +1,5 @@
 import logging
+import json
 import os
 import threading
 import time
@@ -190,6 +191,10 @@ def build_runtime(config_folder: str = "config") -> Runtime:
     if not os.path.exists(cookies_path):
         cookies_path = None
     index = ClipIndex(os.path.join(config_folder, "lidaclips.db"))
+    alias_path = os.environ.get("NAVIDROME_HISTORICAL_IDS")
+    if alias_path:
+        with open(alias_path, encoding="utf-8") as handle:
+            index.navidrome_id_aliases = json.load(handle)
     storage = ClipStorage(settings.clip_output_mode, settings.clip_output_path, settings.staging_path)
     lidarr_client = LidarrClient(settings.lidarr_address, settings.lidarr_api_key, timeout=settings.lidarr_api_timeout)
     navidrome_client = None
